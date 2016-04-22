@@ -7,6 +7,7 @@
 //==================================================================================
 
 #include <AMDTOSWrappers/Include/osCpuid.h>
+//testing
 #include <AMDTOSWrappers/Include/osCriticalSection.h>
 #include <AMDTOSWrappers/Include/osCriticalSectionLocker.h>
 #include <AMDTPowerProfileApi.h>
