@@ -53,7 +53,7 @@ public:
 
     // connections
     bool ConnectServer(const gtASCIIString strServer);
-    bool ConnectProcess(const gtASCIIString strPid);
+    bool ConnectProcess(const gtASCIIString strPid, const gtASCIIString& apiType);
     bool Disconnect();
 
     // commands
@@ -84,9 +84,10 @@ public:
     bool GetCurrentFrameInfo(gtASCIIString& frameInfoAsXML, unsigned char*& pImageBuffer, unsigned long& imageSize);
 
     /// Send a capture request to the server, and get the current frame info and thumbnail
+    /// \param numberFramesToCapture number of frames to capture
     /// \param frameInfoXML[out] the captured frame info as XML
     /// \return true for success
-    bool CaptureFrame(gtASCIIString& frameInfoAsXML);
+    bool CaptureFrame(int numberFramesToCapture, gtASCIIString& frameInfoAsXML);
 
     /// Stub function until the get captured frame functionality is resolved
     bool CaptureFrameStub(gtASCIIString& frameInfoAsXML, unsigned char*& pImageBuffer, unsigned long& imageSize);
@@ -136,6 +137,10 @@ private:
     void CheckServerStatus(const gtASCIIString& httpRequestResult, TargetAppState& appState);
     void CheckServerStatus(unsigned char* pBuffer, unsigned long bufferSize, TargetAppState& appState);
 
+    /// Replace any special HTTP characters
+    /// \param ioCommandText the command string to modify. This string is fixed up in place.
+    void ReplaceSpecialHTTPCharacters(gtASCIIString& ioCommandText);
+
 private:
     enum { SLEEP_INTERVAL_BETWEEN_CONSECUTIVE_RESEND_ATTEMPTS_IN_MILLISECS = 500};
     osPortAddress   m_GPSServer;
@@ -149,6 +154,9 @@ private:
 
     // current process ID
     gtASCIIString   m_strPid;
+    
+    /// current API http command for example : /DX12 or /Vulkan
+    gtASCIIString   m_strApiHttpCommand;
 
     bool m_isStopSignaled;
 };

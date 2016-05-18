@@ -1,7 +1,7 @@
 //==============================================================================
-// Copyright (c) 2015 Advanced Micro Devices, Inc. All rights reserved.
+/// Copyright (c) 2016 Advanced Micro Devices, Inc. All rights reserved.
 /// \author AMD Developer Tools Team
-/// \file
+/// \file   MultithreadedTraceAnalyzerLayer.cpp
 /// \brief  The baseclass for the Multithreaded Trace Analyzer.
 //==============================================================================
 
@@ -12,7 +12,7 @@
 #include "../ModernAPIFrameProfilerLayer.h"
 #include "../TraceMetadata.h"
 #include "../FrameInfo.h"
-#include "../OSwrappers.h"
+#include "../OSWrappers.h"
 #include <AMDTOSWrappers/Include/osFile.h>
 #include <AMDTOSWrappers/Include/osTime.h>
 #include <AMDTOSWrappers/Include/osDirectory.h>
@@ -21,6 +21,18 @@
 #include "../TypeToString.h"
 #include "APIEntry.h"
 #include "ThreadTraceData.h"
+
+#if ENABLE_MULTI_FRAME_TRACE
+//-----------------------------------------------------------------------------
+/// A flag used to indicate that multiple sequential frames are being traced.
+//-----------------------------------------------------------------------------
+static bool sbTracingMultipleFrames = false;
+
+//-----------------------------------------------------------------------------
+/// The number of frames that have been traced thus far in multi-frame trace mode.
+//-----------------------------------------------------------------------------
+static int sTracedFramesCount = 0;
+#endif // ENABLE_MULTI_FRAME_TRACE
 
 //--------------------------------------------------------------------------
 /// MultithreadedTraceAnalyzerLayer's default constructor, which initializes CommandResponses.
@@ -46,6 +58,14 @@ MultithreadedTraceAnalyzerLayer::MultithreadedTraceAnalyzerLayer()
 
     // Command used to automatically trace a target frame in an instrumented application.
     AddCommand(CONTENT_TEXT, "AutoTrace", "AutoTrace", "AutoTrace.txt", DISPLAY, INCLUDE, mCmdAutoCaptureCachedTrace);
+
+#if ENABLE_MULTI_FRAME_TRACE
+    // Command used to specify how many sequential frames should be traced when collecting any kind of trace.
+    AddCommand(CONTENT_TEXT, "NumSequentialPresents", "NumSequentialPresents", "NumSequentialPresents.txt", DISPLAY, INCLUDE, mNumSequentialPresents);
+
+    // Trace only a single frame by default.
+    mNumSequentialPresents = 1;
+#endif // ENABLE_MULTI_FRAME_TRACE
 }
 
 //--------------------------------------------------------------------------
@@ -70,6 +90,8 @@ void MultithreadedTraceAnalyzerLayer::AfterAPITrace()
     }
 }
 
+
+
 //--------------------------------------------------------------------------
 /// BeginFrame is called when a new frame is started, and should setup the
 /// collection process to log each API call issued during the frame.
@@ -77,6 +99,14 @@ void MultithreadedTraceAnalyzerLayer::AfterAPITrace()
 //--------------------------------------------------------------------------
 void MultithreadedTraceAnalyzerLayer::BeginFrame()
 {
+#if ENABLE_MULTI_FRAME_TRACE
+    if (sbTracingMultipleFrames == true)
+    {
+        // If we're tracing multiple frames in a row, skip BeginFrame and pretend we're collecting data for a single huge frame.
+        return;
+    }
+#endif // ENABLE_MULTI_FRAME_TRACE
+
     bool bFrameCaptureWithSaveActive = GetParentLayerManager()->mCmdFrameCaptureWithSave.IsActive();
 
     // Check if automatic tracing is enabled for a specific frame. Determine which trace type by examining the result.
@@ -93,6 +123,14 @@ void MultithreadedTraceAnalyzerLayer::BeginFrame()
 
     if (bAPITraceNeeded || bGPUTraceNeeded)
     {
+#if ENABLE_MULTI_FRAME_TRACE
+        int numFramesToTrace = mNumSequentialPresents.GetValue();
+        if (numFramesToTrace > 1)
+        {
+            sbTracingMultipleFrames = true;
+        }
+#endif // ENABLE_MULTI_FRAME_TRACE
+
         // Set the flag indicating that the frame is being traced. We'll be rendering the next frame when this flag is checked.
         mLastTracedFrameIndex = GetParentLayerManager()->GetFrameCount();
 
@@ -128,6 +166,24 @@ void MultithreadedTraceAnalyzerLayer::BeginFrame()
 //--------------------------------------------------------------------------
 void MultithreadedTraceAnalyzerLayer::EndFrame()
 {
+#if ENABLE_MULTI_FRAME_TRACE
+    if (sbTracingMultipleFrames == true)
+    {
+        int numPresentsToWaitOn = mNumSequentialPresents.GetValue() - 1;
+        if (sTracedFramesCount < numPresentsToWaitOn)
+        {
+            sTracedFramesCount++;
+            return;
+        }
+        else
+        {
+            // We're finished tracing the frame(s). Disable collection and respond to the client request.
+            sTracedFramesCount = 0;
+            sbTracingMultipleFrames = false;
+        }
+    }
+#endif // ENABLE_MULTI_FRAME_TRACE
+
     // Check again which trace type is active at the end of the frame. Need to match how it was started.
     int autotraceFlags = GetTraceTypeFlags();
 
@@ -752,7 +808,9 @@ void MultithreadedTraceAnalyzerLayer::Clear()
 //--------------------------------------------------------------------------
 ThreadTraceData* MultithreadedTraceAnalyzerLayer::FindOrCreateThreadData(DWORD inThreadId)
 {
-    // We don't need to lock yet. map::find is threadsafe.
+    // Need to lock here to control access into our thread trace map
+    ScopeLock mapInsertionLock(&mTraceMutex);
+
     ThreadTraceData* resultTraceData = NULL;
     ThreadIdToTraceData::iterator traceIter = mThreadTraces.find(inThreadId);
 
@@ -762,9 +820,6 @@ ThreadTraceData* MultithreadedTraceAnalyzerLayer::FindOrCreateThreadData(DWORD i
     }
     else
     {
-        // We need to lock here- we're going to insert a new instance into our thread trace map.
-        ScopeLock mapInsertionLock(&mTraceMutex);
-
         // Insert the new ThreadData struct into the map to hold them all.
         resultTraceData = CreateThreadTraceDataInstance();
         mThreadTraces[inThreadId] = resultTraceData;
@@ -813,7 +868,7 @@ bool MultithreadedTraceAnalyzerLayer::WriteTraceAndMetadataFiles(const gtASCIISt
     // If we've successfully opened the metadata file, we'll also attempt to write the trace file.
     if (bMetadataFileOpened == false)
     {
-        Log(logERROR, "Failed to open trace metadata file for writing: '%s'\n", smd.metadataFilename);
+        Log(logERROR, "Failed to open trace metadata file for writing: '%s'\n", smd.metadataFilename.asCharArray());
         return false;
     }
 
@@ -854,6 +909,7 @@ bool MultithreadedTraceAnalyzerLayer::WriteTraceAndMetadataFiles(const gtASCIISt
     TraceMetadata metadataToWrite;
 
     // Insert the location of the metadata file being written out.
+    metadataToWrite.mAPIString = GetAPIString();
     metadataToWrite.mMetadataFilepath = pathToMetadataFile.asCharArray();
 
     // Insert the path to the cached trace file.

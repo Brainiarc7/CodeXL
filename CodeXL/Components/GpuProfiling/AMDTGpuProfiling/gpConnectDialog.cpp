@@ -37,6 +37,7 @@ gpConnectDialog::gpConnectDialog(GraphicsServerCommunication* pGraphicsServerCom
     m_pGraphicsServerCommunication(pGraphicsServerCommunication),
     m_timePassed(0),
     m_pidToConnectTo(""),
+    m_apiToConnectTo(GPU_STR_DX12Api),
     m_processName(""),
     m_processNumber("1"),
     m_validator(1, 100, this),
@@ -54,6 +55,10 @@ gpConnectDialog::gpConnectDialog(GraphicsServerCommunication* pGraphicsServerCom
 
     bool rc = connect(&m_sampleTimer, SIGNAL(timeout()), this, SLOT(onTimerTimeout()));
     GT_ASSERT(rc);
+
+    Qt::WindowFlags flags = windowFlags();
+    flags &= ~Qt::WindowContextHelpButtonHint;
+    setWindowFlags(flags);
 }
 
 gpConnectDialog::~gpConnectDialog()
@@ -152,11 +157,11 @@ void gpConnectDialog::InitLayout()
                 m_pOptionsEdit->setText(settings.m_processName);
                 break;
 
-            case gpProjectSettings::egpFirstDXInProcessConnection:
+            case gpProjectSettings::egpFirstApiInProcessConnection:
                 m_pOptionsEdit->setText(settings.m_processNumber);
                 break;
 
-            case gpProjectSettings::egpFirstDX12Connection:
+            case gpProjectSettings::egpFirstApiConnection:
                 m_pOptionsEdit->setHidden(true);
                 break;
 
@@ -259,7 +264,7 @@ void gpConnectDialog::onTimerTimeout()
                         connectDataVector.push_back(newConnection);
                     }
 
-                    apiElement = currentProcess.nextSiblingElement(GPU_STR_connectionDialogAPINode);
+                    apiElement = apiElement.nextSiblingElement(GPU_STR_connectionDialogAPINode);
                 }
             }
 
@@ -402,19 +407,20 @@ bool gpConnectDialog::CheckAutoConnected(QVector<gpConnectionData>& connections)
             for (int nConnection = 0; nConnection < numConnections; nConnection++)
             {
                 bool foundConnection = false;
-                bool isDX12Connection = (connections[nConnection].mAPI.compare("DX12", Qt::CaseInsensitive) == 0 && connections[nConnection].mAttached.compare("true", Qt::CaseInsensitive) == 0);
+                bool isDX12Connection = (connections[nConnection].mAPI.compare(GPU_STR_DX12Api, Qt::CaseInsensitive) == 0 && connections[nConnection].mAttached.compare("true", Qt::CaseInsensitive) == 0);
+                bool isVulkanConnection = (connections[nConnection].mAPI.compare(GPU_STR_VulkanApi, Qt::CaseInsensitive) == 0 && connections[nConnection].mAttached.compare("true", Qt::CaseInsensitive) == 0);
 
-                // first DX12 that is found
-                if (settings.m_connection == gpProjectSettings::egpFirstDX12Connection || m_forceAutoConnect)
+                // first DX12/Vulkan that is found
+                if (settings.m_connection == gpProjectSettings::egpFirstApiConnection || m_forceAutoConnect)
                 {
-                    if (isDX12Connection)
+                    if (isDX12Connection || isVulkanConnection)
                     {
                         foundConnection = true;
                     }
                 }
-                else if (settings.m_connection == gpProjectSettings::egpFirstDXInProcessConnection)
+                else if (settings.m_connection == gpProjectSettings::egpFirstApiInProcessConnection)
                 {
-                    if ((connections[nConnection].mName == settings.m_processName) && (isDX12Connection))
+                    if ((connections[nConnection].mName == settings.m_processName) && (isDX12Connection || isVulkanConnection))
                     {
                         foundConnection = true;
                     }
@@ -425,7 +431,7 @@ bool gpConnectDialog::CheckAutoConnected(QVector<gpConnectionData>& connections)
 
                     if (numConnectionsForProcess == processNumberToConnect)
                     {
-                        if (isDX12Connection)
+                        if (isDX12Connection || isVulkanConnection)
                         {
                             foundConnection = true;
                         }
@@ -445,6 +451,7 @@ bool gpConnectDialog::CheckAutoConnected(QVector<gpConnectionData>& connections)
                 if (foundConnection)
                 {
                     m_pidToConnectTo = connections[nConnection].mPID;
+                    m_apiToConnectTo = connections[nConnection].mAPI;
                     retVal = true;
                     accept();
                     break;
@@ -472,6 +479,8 @@ void gpConnectDialog::OnAccept()
                 gtString itemText;
                 m_pConnectionsTable->getItemText(currentRow, eProcIDColumn, itemText);
                 m_pidToConnectTo = acGTStringToQString(itemText);
+                m_pConnectionsTable->getItemText(currentRow, eAPIColumn, itemText);
+                m_apiToConnectTo = acGTStringToQString(itemText);
             }
         }
 
@@ -492,14 +501,14 @@ void gpConnectDialog::OnConnectionSelected(int index)
 {
     GT_IF_WITH_ASSERT(m_pOptionsEdit != nullptr)
     {
-        m_pOptionsEdit->setHidden((gpProjectSettings::eConnectionType)index == gpProjectSettings::egpFirstDX12Connection);
+        m_pOptionsEdit->setHidden((gpProjectSettings::eConnectionType)index == gpProjectSettings::egpFirstApiConnection);
 
         if ((gpProjectSettings::eConnectionType)index == gpProjectSettings::egpProcessConnection)
         {
             m_pOptionsEdit->setValidator(&m_validator);
             m_pOptionsEdit->setText(m_processNumber);
         }
-        else if ((gpProjectSettings::eConnectionType)index == gpProjectSettings::egpFirstDXInProcessConnection)
+        else if ((gpProjectSettings::eConnectionType)index == gpProjectSettings::egpFirstApiInProcessConnection)
         {
             m_pOptionsEdit->setValidator(nullptr);
             m_pOptionsEdit->setText(m_processName);
@@ -513,9 +522,9 @@ void gpConnectDialog::OnTextEdited(const QString& text)
     {
         if (m_pOptionsComboBox->currentIndex() == gpProjectSettings::egpProcessConnection)
         {
-            m_processNumber = text;;
+            m_processNumber = text;
         }
-        else if (m_pOptionsComboBox->currentIndex() == gpProjectSettings::egpFirstDXInProcessConnection)
+        else if (m_pOptionsComboBox->currentIndex() == gpProjectSettings::egpFirstApiInProcessConnection)
         {
             m_processName = text;
         }
@@ -528,7 +537,7 @@ void gpConnectDialog::OnTableSelectionChanged()
     {
         QList<QTableWidgetItem*> selectedItems = m_pConnectionsTable->selectedItems();
         bool isSelected = (selectedItems.size() == m_pConnectionsTable->columnCount());
-        bool isDX12 = false;
+        bool isSupportedApi = false;
 
         if (isSelected && selectedItems.size() >= eAPIColumn)
         {
@@ -536,13 +545,14 @@ void gpConnectDialog::OnTableSelectionChanged()
 
             if (pAPIItem != nullptr)
             {
-                if (pAPIItem->text().compare("DX12", Qt::CaseInsensitive) == 0)
+                if (pAPIItem->text().compare(GPU_STR_DX12Api, Qt::CaseInsensitive) == 0 ||
+                    pAPIItem->text().compare(GPU_STR_VulkanApi, Qt::CaseInsensitive) == 0)
                 {
-                    isDX12 = true;
+                    isSupportedApi = true;
                 }
             }
         }
 
-        m_pOKButton->setEnabled(isSelected && isDX12);
+        m_pOKButton->setEnabled(isSelected && isSupportedApi);
     }
 }

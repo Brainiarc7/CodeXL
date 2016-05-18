@@ -120,11 +120,11 @@ void gpRibbonDataCalculator::GetGPUOps(QVector<gpRibbonCallsData>& dataVector)
 {
     GT_IF_WITH_ASSERT(m_pData != nullptr && m_pTimeLineGrid != nullptr && m_pTimeLine != nullptr)
     {
-        int numQueues = m_pData->DX12QueuesCount();
+        int numQueues = m_pData->GPUCallsContainersCount();
 
         for (int nQueue = 0; nQueue < numQueues; nQueue++)
         {
-            QString queueName = m_pData->QueueName(nQueue);
+            QString queueName = m_pData->GPUObjectName(nQueue);
             int numGPUOps = m_pData->QueueItemsCount(queueName);
 
             for (int nGPUOp = 0; nGPUOp < numGPUOps; nGPUOp++)
@@ -440,22 +440,22 @@ void gpRibbonDataCalculator::ConcurrencyToBuckets(QVector<gpRibbonCallsData>& da
     }
 }
 
+
 void gpRibbonDataCalculator::GetPresentData(QVector<double>& presentData)
 {
     presentData.clear();
-    presentData.resize(eNumPresent);
-    presentData[ePresentCPU] = -1;
+    presentData.resize(1);
     presentData[ePresentGPU] = DBL_MAX;
 
     // find the first GPU op
     double firstGPUTime = DBL_MAX;
     GT_IF_WITH_ASSERT(m_pData != nullptr && m_pTimeLine != nullptr)
     {
-        int numQueues = m_pData->DX12QueuesCount();
+        int numQueues = m_pData->GPUCallsContainersCount();
 
         for (int nQueue = 0; nQueue < numQueues; nQueue++)
         {
-            QString queueName = m_pData->QueueName(nQueue);
+            QString queueName = m_pData->GPUObjectName(nQueue);
             int numGPUOps = m_pData->QueueItemsCount(queueName);
 
             for (int nGPUOp = 0; nGPUOp < numGPUOps; nGPUOp++)
@@ -473,7 +473,7 @@ void gpRibbonDataCalculator::GetPresentData(QVector<double>& presentData)
     }
     presentData[ePresentGPU] = firstGPUTime;
 
-    // first CPU present item
+    // There can be multiple CPU present so they will be pushed
     int numThreads = m_pData->ThreadsCount();
 
     for (int nThread = 0; nThread < numThreads; nThread++)
@@ -492,8 +492,7 @@ void gpRibbonDataCalculator::GetPresentData(QVector<double>& presentData)
 
                 if (rc && pCurrentItem->ItemType().m_itemSubType == FuncId_IDXGISwapChain_Present)
                 {
-                    presentData[ePresentCPU] = pCurrentItem->EndTime() - m_pTimeLine->startTime();
-                    break;
+                    presentData.push_back((pCurrentItem->EndTime() - m_pTimeLine->startTime()));
                 }
             }
         }
@@ -507,11 +506,11 @@ int gpRibbonDataCalculator::GetTotalApiCalls()
     GT_IF_WITH_ASSERT(m_pData != nullptr)
     {
         // add the GPU API counts in the GPU queues
-        int numQueues = m_pData->DX12QueuesCount();
+        int numQueues = m_pData->GPUCallsContainersCount();
 
         for (int nQueue = 0; nQueue < numQueues; nQueue++)
         {
-            QString queueName = m_pData->QueueName(nQueue);
+            QString queueName = m_pData->GPUObjectName(nQueue);
             int numGPUOps = m_pData->QueueItemsCount(queueName);
 
             retVal += numGPUOps;

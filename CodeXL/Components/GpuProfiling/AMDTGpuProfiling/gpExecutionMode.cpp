@@ -501,7 +501,7 @@ void gpExecutionMode::OnStartFrameAnalysis()
 
         if (rc)
         {
-            gpConnectDialog connectionDialog(m_pGraphicsServerCommunication);
+            gpConnectDialog connectionDialog(m_pGraphicsServerCommunication, afMainAppWindow::instance());
             bool shouldConnect = connectionDialog.Connect();
             QString processID = connectionDialog.PIDToConnectTo();
 
@@ -509,7 +509,7 @@ void gpExecutionMode::OnStartFrameAnalysis()
             {
                 m_isFrameAnalysisConnecting = true;
                 // connect the process and pass the pid:
-                rc = m_pGraphicsServerCommunication->ConnectProcess(processID.toStdString().c_str());
+                rc = m_pGraphicsServerCommunication->ConnectProcess(processID.toStdString().c_str(), connectionDialog.APIToConnectTo().toStdString().c_str());
 
                 GT_IF_WITH_ASSERT(rc)
                 {
@@ -678,7 +678,7 @@ bool gpExecutionMode::GetFrameTraceFromServer(const osFilePath& sessionFilePath,
                 if (shouldConnect && !processID.isEmpty())
                 {
                     // connect the process and pass the pid:
-                    retVal = m_pGraphicsServerCommunication->ConnectProcess(processID.toStdString().c_str());
+                    retVal = m_pGraphicsServerCommunication->ConnectProcess(processID.toStdString().c_str(), connectionDialog.APIToConnectTo().toStdString().c_str());
 
                     gtASCIIString traceAsText;
 
@@ -778,7 +778,7 @@ bool gpExecutionMode::GetFrameObject(const osFilePath& sessionFilePath, int fram
                 if (shouldConnect && !processID.isEmpty())
                 {
                     // connect the process and pass the pid:
-                    retVal = m_pGraphicsServerCommunication->ConnectProcess(processID.toStdString().c_str());
+                    retVal = m_pGraphicsServerCommunication->ConnectProcess(processID.toStdString().c_str(), connectionDialog.APIToConnectTo().toStdString().c_str());
 
                     gtASCIIString objectInfoAsXML;
 
@@ -1383,7 +1383,7 @@ void gpExecutionMode::Terminate()
 }
 
 
-bool gpExecutionMode::PrepareTraceFile(const osFilePath& m_sessionFilePath, int frameIndex, SessionTreeNodeData* pTreeNodeData, gpBaseSessionView* pTraceView, bool prepareTraceData)
+bool gpExecutionMode::PrepareTraceFile(const osFilePath& sessionFile, int frameIndex, SessionTreeNodeData* pTreeNodeData, gpBaseSessionView* pTraceView, bool prepareTraceData)
 {
     bool retVal = false;
     OS_DEBUG_LOG_TRACER_WITH_RETVAL(retVal);
@@ -1392,7 +1392,7 @@ bool gpExecutionMode::PrepareTraceFile(const osFilePath& m_sessionFilePath, int 
     {
         // Extract the frame index from the file path
         gtString fileName;
-        m_sessionFilePath.getFileName(fileName);
+        sessionFile.getFileName(fileName);
         int pos = fileName.findLastOf(L"_");
 
         GT_IF_WITH_ASSERT(pos >= 0)
@@ -1424,14 +1424,14 @@ bool gpExecutionMode::PrepareTraceFile(const osFilePath& m_sessionFilePath, int 
                 gpExecutionMode* pModeManager = ProfileManager::Instance()->GetFrameAnalysisModeManager();
                 GT_IF_WITH_ASSERT(pModeManager != nullptr)
                 {
-                    osFilePath traceFilePath = gpTreeHandler::Instance().GetFrameChildFilePath(m_sessionFilePath, frameIndex, AF_TREE_ITEM_GP_FRAME_TIMELINE);
+                    osFilePath traceFilePath = gpTreeHandler::Instance().GetFrameChildFilePath(sessionFile, frameIndex, AF_TREE_ITEM_GP_FRAME_TIMELINE);
 
                     retVal = pModeManager->GetFrameTraceFromServer(sessionFilePath, frameIndex, traceFilePath);
                     GT_IF_WITH_ASSERT(retVal)
                     {
                         if (prepareTraceData == true)
                         {
-                            gpUIManager::Instance()->PrepareTraceData(m_sessionFilePath, pTraceView, qobject_cast<GPUSessionTreeItemData*>(pTreeNodeData));
+                            gpUIManager::Instance()->PrepareTraceData(sessionFile, pTraceView, qobject_cast<GPUSessionTreeItemData*>(pTreeNodeData));
                         }
                     }
                 }

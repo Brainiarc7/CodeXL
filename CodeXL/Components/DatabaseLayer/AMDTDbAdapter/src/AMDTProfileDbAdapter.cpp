@@ -214,7 +214,7 @@ bool amdtProfileDbAdapter::InsertProcessInfo(const CPAProcessList& procesList)
 
     for (const auto& p : procesList)
     {
-        ret = m_pDbAccessor->InsertProcessInfo(p.m_pid, p.m_name, p.m_is32Bit);
+        ret = m_pDbAccessor->InsertProcessInfo(p.m_pid, p.m_name, p.m_is32Bit, p.m_hasCSS);
     }
 
     return ret;
@@ -590,12 +590,66 @@ bool amdtProfileDbAdapter::GetThreadInfo(AMDTUInt32 pid, AMDTThreadId tid, gtVec
     return ret;
 }
 
+bool amdtProfileDbAdapter::GetCounterTotals(AMDTProfileDataType   type,
+    AMDTProcessId         procId,
+    AMDTThreadId          threadId,
+    AMDTModuleId          moduleId,
+    AMDTFunctionId        funcId,
+    gtVector<AMDTUInt32>  counterIdsList,
+    AMDTUInt64            coreMask,
+    bool                  separateByCore,
+    AMDTSampleValueVec&   sampleValueVec)
+{
+    bool ret = false;
+
+    if (m_pDbAccessor != nullptr)
+    {
+        switch (type)
+        {
+        case AMDT_PROFILE_DATA_PROCESS:
+            ret = m_pDbAccessor->GetProcessTotals(procId,
+                                                  counterIdsList,
+                                                  coreMask,
+                                                  separateByCore,
+                                                  sampleValueVec);
+            break;
+
+        case AMDT_PROFILE_DATA_MODULE:
+            ret = m_pDbAccessor->GetModuleTotals(moduleId,
+                                                 procId,
+                                                 counterIdsList,
+                                                 coreMask,
+                                                 separateByCore,
+                                                 sampleValueVec);
+            break;
+
+        case AMDT_PROFILE_DATA_THREAD:
+            break;
+
+        case AMDT_PROFILE_DATA_FUNCTION:
+            ret = m_pDbAccessor->GetFunctionTotals(funcId,
+                                                   procId,
+                                                   threadId,
+                                                   counterIdsList,
+                                                   coreMask,
+                                                   separateByCore,
+                                                   sampleValueVec);
+            break;
+
+        default:
+            ret = false;
+        }
+    }
+
+    return ret;
+}
+
 bool amdtProfileDbAdapter::GetProfileData(
     AMDTProfileDataType         type,
     AMDTProcessId               processId,
     AMDTModuleId                moduleId,
     AMDTThreadId                threadId,
-    AMDTUInt32                  counterId,
+    gtVector<AMDTUInt32>        counterIdList,
     AMDTUInt64                  coreMask,
     bool                        separateByCore,
     bool                        separateByProcess,  // for function summary
@@ -607,9 +661,6 @@ bool amdtProfileDbAdapter::GetProfileData(
 
     if (m_pDbAccessor != nullptr)
     {
-        gtVector<AMDTUInt32> counterIdList;
-        counterIdList.push_back(counterId);
-
         switch (type)
         {
             case AMDT_PROFILE_DATA_PROCESS:
@@ -648,6 +699,7 @@ bool amdtProfileDbAdapter::GetProfileData(
             case AMDT_PROFILE_DATA_FUNCTION:
                 ret = m_pDbAccessor->GetFunctionSummaryData(processId,
                                                             threadId,
+                                                            moduleId,
                                                             counterIdList,
                                                             coreMask,
                                                             separateByCore,
@@ -655,14 +707,11 @@ bool amdtProfileDbAdapter::GetProfileData(
                                                             doSort,
                                                             count,
                                                             dataList);
-
                 break;
 
             default:
                 ret = false;
         }
-
-        // Based on Type call the appropriate interface
     }
 
     return ret;
@@ -708,6 +757,49 @@ bool amdtProfileDbAdapter::GetBucketizedSamplesByCounterId(unsigned int bucketWi
     return ret;
 }
 
+bool amdtProfileDbAdapter::GetCallstackLeafData(AMDTProcessId       processId,
+                                                AMDTUInt32          counterId,
+                                                gtUInt32            callStackId,
+                                                CallstackFrameVec&  leafs)
+{
+    bool ret = false;
+
+    if (m_pDbAccessor != nullptr)
+    {
+        ret = m_pDbAccessor->GetCallstackLeafData(processId, counterId, callStackId, leafs);
+    }
+
+    return ret;
+}
+
+bool amdtProfileDbAdapter::GetCallstackFrameData(AMDTProcessId       processId,
+                                                 gtUInt32            callstackId,
+                                                 CallstackFrameVec&  frames)
+{
+    bool ret = false;
+
+    if (m_pDbAccessor != nullptr)
+    {
+        ret = m_pDbAccessor->GetCallstackFrameData(processId, callstackId, frames);
+    }
+
+    return ret;
+}
+
+bool amdtProfileDbAdapter::GetCallstackIds(AMDTProcessId        processId,
+                                           AMDTFunctionId       funcId,
+                                           gtVector<gtUInt32>&  csIds)
+{
+    bool ret = false;
+
+    if (m_pDbAccessor != nullptr)
+    {
+        ret = m_pDbAccessor->GetCallstackIds(processId, funcId, csIds);
+    }
+
+    return ret;
+}
+
 //
 //  Helper functions
 //
@@ -721,4 +813,39 @@ void amdtProfileDbAdapter::PrepareTimelineSamplesToInsert(AMDTProfileTimelineSam
             static_cast<int>(beVal.m_counterId),
             static_cast<double>(beVal.m_counterValue));
     }
+}
+
+bool amdtProfileDbAdapter::InsertCallStackFrames(const CPACallStackFrameInfoList& csFrameInfoList)
+{
+    if (m_pDbAccessor != nullptr)
+    {
+        for (const auto& frameInfo : csFrameInfoList)
+        {
+            m_pDbAccessor->InsertCallStackFrame(
+                frameInfo.m_callStackId,
+                frameInfo.m_processId,
+                frameInfo.m_funcId,
+                frameInfo.m_offset,
+                frameInfo.m_depth);
+        }
+    }
+    return true;
+}
+
+bool amdtProfileDbAdapter::InsertCallStackLeafs(const CPACallStackLeafInfoList& csLeafInfoList)
+{
+    if (m_pDbAccessor != nullptr)
+    {
+        for (const auto& frameInfo : csLeafInfoList)
+        {
+            m_pDbAccessor->InsertCallStackLeaf(
+                frameInfo.m_callStackId,
+                frameInfo.m_processId,
+                frameInfo.m_funcId,
+                frameInfo.m_offset,
+                frameInfo.m_counterId,
+                frameInfo.m_selfSamples);
+        }
+    }
+    return true;
 }

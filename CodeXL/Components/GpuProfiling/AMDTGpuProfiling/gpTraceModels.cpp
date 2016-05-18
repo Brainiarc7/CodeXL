@@ -28,6 +28,18 @@ gpTableModelBase::gpTableModelBase(osThreadId threadID, gpTraceDataContainer* pD
     }
 }
 
+
+gpTableModelBase::gpTableModelBase(gpTraceDataContainer* pDataContainer, ProfileSessionDataItem::ProfileItemAPIType apiType) : QAbstractItemModel(),
+m_pSessionDataContainer(pDataContainer)
+{
+    // Sanity check:
+    GT_IF_WITH_ASSERT(m_pSessionDataContainer != nullptr)
+    {
+        ProfileSessionDataItem::GetListOfColumnIndices(apiType, m_columnIndicesVec);
+    }
+}
+
+
 gpTableModelBase::~gpTableModelBase()
 {
 }
@@ -363,23 +375,32 @@ ProfileSessionDataItem::ProfileSessionDataColumnIndex gpTableModelBase::TableInd
 }
 
 
-DXAPIGPUTableModel::DXAPIGPUTableModel(const QString& queueName, gpTraceDataContainer* pDataContainer) :
+GPUTableModel::GPUTableModel(const QString& queueName, gpTraceDataContainer* pDataContainer) :
     gpTableModelBase(0, pDataContainer), m_queueName(queueName)
 {
     // Sanity check:
     GT_IF_WITH_ASSERT(m_pSessionDataContainer != nullptr)
     {
         // Get the columns vector
-        ProfileSessionDataItem::GetListOfColumnIndices(ProfileSessionDataItem::DX12_GPU_PROFILE_ITEM, m_columnIndicesVec);
+        ProfileSessionDataItem::ProfileItemAPIType gpuItemType = ProfileSessionDataItem::DX12_GPU_PROFILE_ITEM;
+        if (m_pSessionDataContainer->SessionAPIType() == ProfileSessionDataItem::VK_API_PROFILE_ITEM)
+        {
+            gpuItemType = ProfileSessionDataItem::VK_GPU_PROFILE_ITEM;
+        }
+        else if (m_pSessionDataContainer->SessionAPIType() == ProfileSessionDataItem::CL_API_PROFILE_ITEM)
+        {
+            gpuItemType = ProfileSessionDataItem::CL_GPU_PROFILE_ITEM;
+        }
+        ProfileSessionDataItem::GetListOfColumnIndices(gpuItemType, m_columnIndicesVec);
     }
 }
 
-DXAPIGPUTableModel::~DXAPIGPUTableModel()
+GPUTableModel::~GPUTableModel()
 {
 
 }
 
-int DXAPIGPUTableModel::rowCount(const QModelIndex& parent) const
+int GPUTableModel::rowCount(const QModelIndex& parent) const
 {
     int retVal = 0;
 
@@ -395,7 +416,7 @@ int DXAPIGPUTableModel::rowCount(const QModelIndex& parent) const
     return retVal;
 }
 
-QModelIndex DXAPIGPUTableModel::index(int row, int column, const QModelIndex& parent) const
+QModelIndex GPUTableModel::index(int row, int column, const QModelIndex& parent) const
 {
     QModelIndex retVal;
 
@@ -416,7 +437,7 @@ QModelIndex DXAPIGPUTableModel::index(int row, int column, const QModelIndex& pa
     return retVal;
 }
 
-ProfileSessionDataItem* DXAPIGPUTableModel::GetItem(const QModelIndex& item) const
+ProfileSessionDataItem* GPUTableModel::GetItem(const QModelIndex& item) const
 {
     ProfileSessionDataItem* pRetVal = nullptr;
 
@@ -429,7 +450,7 @@ ProfileSessionDataItem* DXAPIGPUTableModel::GetItem(const QModelIndex& item) con
     return pRetVal;
 }
 
-bool DXAPIGPUTableModel::ExportToCSV(const QString& outputFilePath)
+bool GPUTableModel::ExportToCSV(const QString& outputFilePath)
 {
     bool retVal = false;
 
@@ -437,11 +458,11 @@ bool DXAPIGPUTableModel::ExportToCSV(const QString& outputFilePath)
     GT_IF_WITH_ASSERT(m_pSessionDataContainer != nullptr)
     {
 
-        int queueCount = m_pSessionDataContainer->DX12QueuesCount();
+        int queueCount = m_pSessionDataContainer->GPUCallsContainersCount();
 
         for (int i = 0; i < queueCount; i++)
         {
-            QString queueName = m_pSessionDataContainer->QueueName(i);
+            QString queueName = m_pSessionDataContainer->GPUObjectName(i);
             QString queueFile = outputFilePath;
 
             QString queueTypeStr;

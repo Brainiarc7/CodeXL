@@ -310,7 +310,7 @@ bool gpSessionView::DisplaySession(const osFilePath& sessionFilePath, afTreeItem
                 GT_ASSERT(rc);
 
                 // Connect to the session stop signal
-                connect(gpUIManager::Instance(), SIGNAL(UpdateUI()), this, SLOT(OnUpdateUI()));
+                rc = connect(gpUIManager::Instance(), SIGNAL(UIUpdated()), this, SLOT(OnUpdateUI()));
                 GT_ASSERT(rc);
 
 
@@ -621,7 +621,10 @@ void gpSessionView::OnApplicationRunEnded(gpSessionTreeNodeData* pRunningSession
         m_pCurrentFrameCaptionLabel->setText(GPU_STR_dashboard_MainImageCaptionStopped);
 
         // Select the first capture frame, to make sure that the "Open Timeline" button is enabled
-        m_pSnapshotsThumbView->SetSelected(0, true);
+        if (m_pSnapshotsThumbView->ItemsCount() > 0)
+        {
+            m_pSnapshotsThumbView->SetSelected(0, true);
+        }
     }
 }
 
@@ -812,10 +815,18 @@ void gpSessionView::FillExecutionDetails()
 
         bool rc = gpUIManager::Instance()->ReadDashboardFile(sessionData, m_sessionPath);
         GT_ASSERT(rc);
+
         htmlContent.addHTMLItem(afHTMLContent::AP_HTML_BOLD_LINE, GPU_STR_dashboard_HTMLHost, sessionData.m_hostIP);
         htmlContent.addHTMLItem(afHTMLContent::AP_HTML_BOLD_LINE, GPU_STR_dashboard_HTMLTargetPath, sessionData.m_exePath);
         htmlContent.addHTMLItem(afHTMLContent::AP_HTML_BOLD_LINE, GPU_STR_dashboard_HTMLWorkingDirectory, sessionData.m_workingFolder);
-        htmlContent.addHTMLItem(afHTMLContent::AP_HTML_BOLD_LINE, GPU_STR_dashboard_HTMLCommandLineArguments, sessionData.m_cmdArgs);
+
+        // If there are on command line arguments, add an empty string to avoid HTML empty cell
+        gtString cmdArgs = sessionData.m_cmdArgs;
+        if (cmdArgs.isEmpty())
+        {
+            cmdArgs = acQStringToGTString(AF_STR_HtmlNBSP);
+        }
+        htmlContent.addHTMLItem(afHTMLContent::AP_HTML_BOLD_LINE, GPU_STR_dashboard_HTMLCommandLineArguments, cmdArgs);
 
         htmlContent.toString(strContent);
 

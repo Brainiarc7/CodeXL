@@ -128,9 +128,8 @@ bool gpTraceView::DisplaySession(const osFilePath& sessionFilePath, afTreeItemTy
         GT_IF_WITH_ASSERT(retVal)
         {
             // Make sure that the file exists, and contain data from server, and parse the trace file
-            // NZ retVal = PrepareTraceFile();
-
             gpExecutionMode* pModeManager = ProfileManager::Instance()->GetFrameAnalysisModeManager();
+            GT_ASSERT(pModeManager != nullptr);
             retVal = pModeManager->PrepareTraceFile(m_sessionFilePath, m_frameIndex, m_pSessionData, this);
 
 
@@ -185,8 +184,9 @@ bool gpTraceView::DisplaySession(const osFilePath& sessionFilePath, afTreeItemTy
                 afApplicationCommands::instance()->EndPerformancePrintout("Adding CPU items");
 
                 afApplicationCommands::instance()->StartPerformancePrintout("Adding GPU items");
+
                 // Add the GPU items
-                int queuesCount = m_pSessionDataContainer->DX12QueuesCount();
+                int queuesCount = m_pSessionDataContainer->GPUCallsContainersCount();
 
                 if (queuesCount > 0)
                 {
@@ -194,7 +194,9 @@ bool gpTraceView::DisplaySession(const osFilePath& sessionFilePath, afTreeItemTy
                     {
                         for (int i = 0; i < queuesCount; i++)
                         {
-                            QString queueName = m_pSessionDataContainer->QueueName(i);
+                            QString queueName = m_pSessionDataContainer->GPUObjectName(i);
+
+                            // Find the GPU item type according to the container API type
                             gpTraceTable* pTable = new gpTraceTable(queueName, m_pSessionDataContainer, this);
                             pTable->SetSelectionBackgroundColor(acQAMD_CYAN_SELECTION_BKG_COLOUR);
 
@@ -220,8 +222,15 @@ bool gpTraceView::DisplaySession(const osFilePath& sessionFilePath, afTreeItemTy
                             queueTypeStr = gpTraceDataContainer::CommandListTypeAsString(queueType);
 
                             // Create the queue table name
-                            QString queueDisplayName = ProfileSessionDataItem::QueueDisplayName(queueName);
-                            QString tableCaption = QString(GPU_STR_timeline_QueueBranchName).arg(queueTypeStr).arg(queueDisplayName);
+                            QString queueDisplayName = m_pSessionDataContainer->QueueNameFromPointer(queueName);
+
+                            QString tableCaption = queueDisplayName;
+                            if (queueTypeStr.isEmpty())
+                            {
+                                tableCaption.prepend(AF_STR_SpaceA);
+                                tableCaption.prepend(queueTypeStr);
+                            }
+                            
                             m_pGPUTraceTablesTabWidget->addTab(pTable, QIcon(), tableCaption);
                         }
                     }
@@ -523,7 +532,7 @@ void gpTraceView::SetProfileDataModel(gpTraceDataModel* pDataModel)
         // Sanity check:
         GT_IF_WITH_ASSERT(m_pSessionDataContainer != nullptr)
         {
-            isGPUTrace = m_pSessionDataContainer->DX12QueuesCount() > 0;
+            isGPUTrace = m_pSessionDataContainer->GPUCallsContainersCount() > 0;
         }
 
         // If there is a GPU trace, add an horizontal splitter with the GPU trace table.
@@ -574,7 +583,10 @@ void gpTraceView::SetProfileDataModel(gpTraceDataModel* pDataModel)
         GT_ASSERT(rc);
         rc = connect(m_pTimeline, SIGNAL(itemDoubleClicked(acTimelineItem*)), this, SLOT(OnTimelineItemActivated(acTimelineItem*)));
         GT_ASSERT(rc);
-
+        rc = connect(m_pRibbonManager, SIGNAL(ShowTimeLine(bool, double)), m_pNavigationRibbon->NavigationChart(), SLOT(OnShowTimeLine(bool, double)));
+        GT_ASSERT(rc);
+        rc = connect(m_pNavigationRibbon->NavigationChart(), SIGNAL(ShowTimeLine(bool, double)), m_pRibbonManager, SLOT(OnShowTimeLine(bool, double)));
+        GT_ASSERT(rc);
     }
 }
 void gpTraceView::OnTimelineRangeChanged()
@@ -614,10 +626,14 @@ void gpTraceView::OnTimelineItemActivated(acTimelineItem* pTimelineItem)
             }
         }
 
-        GT_IF_WITH_ASSERT(pMatchingItem != nullptr)
+        if (pMatchingItem != nullptr)
         {
             // Select the item in the tables
             SelectItemInTraceTables(pMatchingItem, true);
+        }
+        else // command list
+        {
+            m_pSummaryTableTabWidget->SelectCommandList(pTimelineItem->text());
         }
     }
 }

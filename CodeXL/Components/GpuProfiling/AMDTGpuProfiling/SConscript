@@ -90,7 +90,7 @@ GPUProf_env.Prepend(CPPPATH = [appsdk_inc])
 
 # HSA - headers only.
 hsa_dir = GPUProf_env['CXL_common_dir'] + '/Lib/AMD/HSA/STGFoundation/hsa'
-hsa_inc = hsa_dir + '/include'
+hsa_inc = hsa_dir + '/include' , '/opt/rocm/hsa/include/' #added local install of public release HSA headers to allow both Public and Internal builds
 GPUProf_env.Prepend(CPPPATH = [hsa_inc])
 
 # required backend dirs
@@ -157,6 +157,7 @@ moc_files = Split(
         'gpProjectSettingsExtension.h ' +
         'gpTraceView.h ' +
         'gpTraceSummaryWidget.h ' +
+        'gpTraceSummaryTab.h ' +
         'gpTraceSummaryTable.h ' +
         'gpPerformanceCountersDataView.h '
         )
@@ -281,6 +282,7 @@ gpuprof_files = Split(
         'gpTraceDataModel.cpp ' +
         'gpTraceView.cpp ' +
         'gpTraceSummaryWidget.cpp ' +
+        'gpTraceSummaryTab.cpp ' +
         'gpTraceSummaryTable.cpp ' +
         'gpPerformanceCountersDataView.cpp ' +
         'gpTreeHandler.cpp ' +

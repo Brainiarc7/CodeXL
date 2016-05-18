@@ -232,7 +232,9 @@ static void HandleServerStatusResponse(GRAPHICS_SERVER_STATE serverState, HTTPRe
 #endif
 
 /// Record the clear state of the registry
-static bool registryCleared = false;
+#ifdef _WIN32
+    static bool registryCleared = false;
+#endif
 
 bool ProcessTracker::HandleRequest(HTTPRequestHeader* pRequestHeader,
                                    CommunicationID requestID,
@@ -276,7 +278,6 @@ bool ProcessTracker::HandleRequest(HTTPRequestHeader* pRequestHeader,
 #ifdef _WIN32
 
     // if using AppInit_Dll, clear the registry as soon as a process.xml request is sent.
-    // TODO: move this to where a connection has definately been made
     if (SG_GET_BOOL(OptionAppInitDll) == true)
     {
         if (registryCleared == false)
@@ -615,6 +616,9 @@ bool ProcessTracker::WritePluginsToSharedMemoryAndLaunchApp()
 //--------------------------------------------------------------
 PROCESS_INFORMATION ProcessTracker::LaunchAppInNewProcess(gtASCIIString strApp, gtASCIIString strDir, gtASCIIString strArgs, osModuleArchitecture binaryType)
 {
+#ifdef _LINUX
+    PS_UNREFERENCED_PARAMETER(binaryType);
+#endif
     LogConsole(logMESSAGE, "About to launch: %s\n", strApp.asCharArray());
     LogConsole(logMESSAGE, "Params: %s\n", strArgs.asCharArray());
     LogConsole(logMESSAGE, "Working Directory: %s\n", strDir.asCharArray());
@@ -1084,47 +1088,18 @@ bool ProcessTracker::PassRequestToPlugin(const char* strDestination,
 //--------------------------------------------------------------------------
 /// Setup Vulkan-specific environment variables
 //--------------------------------------------------------------------------
-void SetupVulkanEnvVariables()
-{
 #if ENABLE_VULKAN
 
-    // Windows
-#ifdef _WIN32
-
-    // Internal build
-#ifdef GDT_INTERNAL
-#ifdef _DEBUG
-#ifdef X64
-    gtString layerName = L"VulkanServer-x64-d-Internal";
+static void SetupVulkanEnvVariables()
+{
+#ifdef CODEXL_GRAPHICS
+    gtASCIIString layerNameA = "CXLGraphicsServerVulkan" GDT_PROJECT_SUFFIX;
 #else
-    gtString layerName = L"VulkanServer-d-Internal";
-#endif
-#else
-#ifdef X64
-    gtString layerName = L"VulkanServer-x64-Internal";
-#else
-    gtString layerName = L"VulkanServer-Internal";
-#endif
+    gtASCIIString layerNameA = "VulkanServer" GDT_PROJECT_SUFFIX;
 #endif
 
-    // Release build
-#else
-
-#ifdef _DEBUG
-#ifdef X64
-    gtString layerName = L"VulkanServer-x64-d";
-#else
-    gtString layerName = L"VulkanServer-d";
-#endif
-#else
-#ifdef X64
-    gtString layerName = L"VulkanServer-x64";
-#else
-    gtString layerName = L"VulkanServer";
-#endif
-#endif
-
-#endif
+    gtString layerName;
+    layerName.fromASCIIString(layerNameA.asCharArray());
 
     gtASCIIString serverPath;
     GetModuleDirectory(serverPath);
@@ -1145,14 +1120,9 @@ void SetupVulkanEnvVariables()
     osSetCurrentProcessEnvVariable(layerPath);
     osSetCurrentProcessEnvVariable(instanceLayerName);
     osSetCurrentProcessEnvVariable(deviceLayerName);
-
-    // Linux
-#else
-
-#endif
-
-#endif
 }
+
+#endif // ENABLE_VULKAN
 
 //--------------------------------------------------------------------------
 /// Before launching a new process, this function will initialize the environment for the

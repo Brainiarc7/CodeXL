@@ -39,8 +39,8 @@ public:
     enum eConnectionType
     {
         egpProcessConnection = 0,
-        egpFirstDXInProcessConnection,
-        egpFirstDX12Connection
+        egpFirstApiInProcessConnection,
+        egpFirstApiConnection
     };
 
     /// should the connection be automatic (-1 marks that is should be marked as should but should not since this is the first time it is connected)
@@ -57,6 +57,9 @@ public:
 
     /// First DX12 in this process
     QString m_processName;
+
+    /// number of frames to capture
+    QString m_numFramesToCapture;
 
     /// lists of preset counters
     std::map<QString, QStringList>& PresetCountersLists() { return m_presetCountersLists; };

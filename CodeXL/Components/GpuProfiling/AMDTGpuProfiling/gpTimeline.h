@@ -39,6 +39,9 @@ public:
     /// Add the API functions for the requested queue
     void AddQueueGPUApis(const QString& queueName);
 
+    /// Add the command lists for the requested queue to the timeline
+    void AddCommandListsToTimeline();
+
     /// Add the performance markers for the thread to the timeline
     /// \param threadId thread ID
     void AddPerformanceMarkersToTimeline(osThreadId threadId);
@@ -97,6 +100,11 @@ private:
     /// \param the item type for which the timeline item should be added
     /// \return the branch
     acTimelineBranch* GetBranchForAPI(osThreadId threadId, const QString& queueName, const QString& branchText, ProfileSessionDataItem::ProfileItemAPIType itemType);
+
+    /// Gets or creates an branch for the queue in the command lists branch
+    /// \param queueName the queue name for GPU items
+    /// \return the branch
+    acTimelineBranch* GetCommandListBranch(const QString& queueName);
 
     /// Gets or creates a performance markers branch for the host in threadId
     /// \param threadId the host thread id
@@ -161,7 +169,13 @@ private:
     QMap<osThreadId, acTimelineBranch*> m_cpuBranchesMap;
 
     /// Map from queue name to the timeline branch for that queue
-    QMap<QString, acTimelineBranch*> m_gpuBranchesMap;
+    struct QueueBranches
+    {
+        acTimelineBranch* m_pQueueRootBranch;
+        acTimelineBranch* m_pQueueAPIBranch;
+        acTimelineBranch* m_pQueueCommandListsBranch;
+    };
+    QMap<QString, QueueBranches> m_gpuBranchesMap;
 
     /// CPU timeline branch
     acTimelineBranch* m_pCPUTimelineBranch;

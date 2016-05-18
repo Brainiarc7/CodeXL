@@ -18,6 +18,7 @@
 #pragma warning(pop)
 
 #include <AMDTBaseTools/Include/gtASCIIString.h>
+#include <AMDTBaseTools/Include/gtHashMap.h>
 #include "TaskInfoMapper.h"
 #include "JitTaskInfo.h"
 
@@ -44,6 +45,7 @@
 #define CA_TASKINFO_DRIVER_NAME "CAPROF"
 
 typedef gtMap<gtUInt64, gtUInt64> PidMap;
+typedef gtHashMap<std::wstring, gtUInt32> ModuleIdMap;
 
 struct ModNameAddrKey
 {
@@ -117,9 +119,7 @@ public:
     // Caller allocates the space for module name.
     HRESULT GetModuleInfo(TiModuleInfo* pModInfo);
 
-#ifdef AMDT_ENABLE_CPUPROF_DB
     HRESULT GetProcessThreadList(gtVector<std::tuple<gtUInt32, gtUInt32>>& info);
-#endif
 
     // Get number of kernel modules
     HRESULT GetKernelModNum(/* [out] */ unsigned* pKeModNum);
@@ -292,6 +292,7 @@ private:
 
     ModuleMap m_allModulesMap;
     PidMap m_interestingPidMap;
+    ModuleIdMap m_moduleIdMap;
 
     // kernel module map
     KernelModMap m_tiKeModMap;
@@ -324,9 +325,8 @@ private:
     osCriticalSection m_TIMutexKE;
     osCriticalSection m_TIMutexModule;
 
-#ifdef AMDT_ENABLE_CPUPROF_DB
     gtUInt32 m_nextModInstanceId = 1;
-#endif
+    gtInt32 m_nextModuleId = 1;
 };
 
 #endif // _WINTASKINFO_H_

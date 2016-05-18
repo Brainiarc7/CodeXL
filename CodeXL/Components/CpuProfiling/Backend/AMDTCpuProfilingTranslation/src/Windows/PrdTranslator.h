@@ -35,6 +35,7 @@
 #include <AMDTAPIClasses/Include/Events/apProfileProgressEvent.h>
 #include <AMDTExecutableFormat/inc/ProcessWorkingSet.h>
 #include <AMDTBaseTools/Include/gtFlatMap.h>
+#include <AMDTCpuProfilingRawData/inc/ProfilerDataDBWriter.h>
 
 class ExecutableAnalyzer;
 
@@ -511,15 +512,13 @@ private:
     KeModQueryInfo* m_pProfilingDrivers;
     unsigned m_countProfilingDrivers;
 
-#ifdef AMDT_ENABLE_CPUPROF_DB
-    gtInt32 m_nextModuleId;
-#endif
-
     ProcessInfo* FindProcessInfo(ProcessIdType pid) const;
     ProcessInfo& AcquireProcessInfo(ProcessIdType pid);
 
     friend class PrdUserCssRcuHandler;
     friend class PrdUserCssRcuHandlerPool;
+
+    ProfilerDataDBWriter* m_dbWriter = nullptr;
 };
 
 

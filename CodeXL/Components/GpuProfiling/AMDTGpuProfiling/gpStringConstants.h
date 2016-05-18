@@ -241,8 +241,8 @@
 #define GPU_STR_TraceViewCpuDevice "CPU_Device"
 #define GPU_STR_TraceViewOpenCL "OpenCL"
 #define GPU_STR_TraceViewHSA "HSA"
-#define GPU_STR_TraceViewDX12 "DX12"
-#define GPU_STR_TraceViewVulkan "Vulkan"
+#define GPU_STR_DX12Api "DX12"
+#define GPU_STR_VulkanApi "Vulkan"
 #define GPU_STR_TraceViewGPU "GPU"
 #define GPU_STR_TraceViewCPU "CPU"
 #define GPU_STR_TraceViewThread "Thread"
@@ -257,6 +257,8 @@
 // Trace table captions
 #define GP_STR_TraceTableColumnIndex "Index"
 #define GP_STR_TraceTableColumnInterface "Interface"
+#define GP_STR_TraceTableColumnCommandList "Command List"
+#define GP_STR_TraceTableColumnCommandBuffer "Command Buffer"
 #define GP_STR_TraceTableColumnCall "Call"
 #define GP_STR_TraceTableColumnParameters "Parameters"
 #define GP_STR_TraceTableColumnResult "Result"
@@ -383,12 +385,14 @@
 #define GPU_STR_projectSettingsPortNumberXMLField L"PortNumber"
 #define GPU_STR_projectSettingsProcessNumberXMLField L"ProcessNumber"
 #define GPU_STR_projectSettingsProcessNameXMLField L"ProcessName"
+#define GPU_STR_projectSettingsNumberFramesToCaptureXMLField L"NumberFrames"
 #define GPU_STR_projectSettingsAPISelection "API Selection"
 #define GPU_STR_projectSettingsAutomaticConnect "Automatically connect to"
+#define GPU_STR_projectSettingNumberOfFramesToCapture "Number of frames to Capture at once"
 #define GPU_STR_projectSettingsServerConnectionPort "Server connection port"
 #define GPU_STR_projectSettingsComboProcessNumberOption "Launched Process #"
-#define GPU_STR_projectSettingsComboAPIOption "First active API in process"
-#define GPU_STR_projectSettingsComboDX12Option "First active DX12"
+#define GPU_STR_projectSettingsComboAPIInProcessOption "First active API in [ProcessName]"
+#define GPU_STR_projectSettingsComboAPIOption "First active [API]"
 
 #define GPU_STR_PropertiesExecutionInformationSA L"To start Frame Analysis, select 'Start Frame Analysis' from the Frame Analysis menu, or click the 'Start Frame Analysis' toolbar button."
 #define GPU_STR_PropertiesExecutionInformationVS L"To start Frame Analysis, select 'Start Frame Analysis' from CodeXL menu, or click the 'Start Frame Analysis' toolbar button."
@@ -431,7 +435,7 @@
 #define GPU_STR_dashboard_DrawCalls "Draw Calls: %1"
 #define GPU_STR_dashboard_RunTimeDoubleClickMessage "Frame trace can be opened only after the session stops.\nDo you want to stop the session and open the timeline?"
 #define GPU_STR_dashboard_ItemTooltip "Double click to review frame data"
-#define GPU_STR_dashboard_serverdisconnectedError "The session stopped due to one of the following reasons:\n- The profiled application stopped running.\n- The profiled application needs to be brought back to focus."
+#define GPU_STR_dashboard_serverdisconnectedError "The session was stopped because:\n- The application being analyzed was closed.\n- The analyzed application needs to be raised into focus."
 #define GPU_STR_dashboard_failedToLaunchError "Application failed to launch:\n- Please validate application exists at specified location\n- Please validate application can be launched."
 #define GPU_STR_dashboard_failedToConnectError "Application failed to launch:\nServer failed to connect to application, no DX12 component or profiled application need to be raised into focus."
 #define GPU_STR_dashboard_CapturedFramesCaptionNumFrames " (%1 Frames)"
@@ -480,8 +484,14 @@
 #define GPU_STR_timeline_QueueBranchNameWithParam "Queue (%1) - %2"
 #define GPU_STR_timeline_QueueBranchNameWithParam "Queue (%1) - %2"
 #define GPU_STR_timeline_ContextBranchName "Context %1 (%2)"
-#define GPU_STR_timeline_QueueBranchName "%1 Queue %2"
+#define GPU_STR_timeline_QueueBranchName "Queue %1"
+#define GPU_STR_timeline_CmdListBranchName "CmdList %1"
+#define GPU_STR_timeline_CmdBufferBranchName "CmdBuffer %1"
+#define GPU_STR_timeline_QueueAPICallsBranchName "API Calls"
+#define GPU_STR_timeline_CmdListsBranchName "Command Lists"
+#define GPU_STR_timeline_CmdBuffersBranchName "Command Buffers"
 #define GPU_STR_timeline_ContextBranchNameWithParam "Queue %1 - %2 (%3)"
+
 #define GPU_STR_DXAPITimeline_tooltipLine1 "Call #%1<br>%2"
 #define GPU_STR_DXAPITimeline_tooltipLine2 "Time: %3 - %4 (%5ms)"
 
@@ -565,7 +575,7 @@
 #define GPU_STR_connectionDialogTableHeader "#,Process,PID,API,Status,Time loaded"
 #define GPU_STR_connectionDialogMonitoring "Monitoring..."
 #define GPU_STR_connectionDialogAutoCheckBox "Automatically connect next session to"
-#define GPU_STR_connectionDialogComboOptionsDefault "Launched Process [#],First active API in [ProcessName],First active [API]"
+#define GPU_STR_connectionDialogComboOptionsDefault  GPU_STR_projectSettingsComboProcessNumberOption "," GPU_STR_projectSettingsComboAPIInProcessOption "," GPU_STR_projectSettingsComboAPIOption
 #define GPU_STR_connectionDialogComboOptionsSelected "Process %1,First active API in %1,First active %1"
 #define GPU_STR_connectionDialogOKCaption L"Connect"
 #define GPU_STR_connectionDialogStarted "Started"
@@ -598,17 +608,24 @@
 // ribbon names
 #define GPU_STR_ribbonNameDrawCalls "CPU Draw Calls"
 #define GPU_STR_ribbonNameTimeLine "Timeline"
-#define GPU_STR_ribbonNameAPICalls "API Calls"
-#define GPU_STR_ribbonNameSummary "Summary"
+#define GPU_STR_ribbonNameAPICalls "Call History"
+#define GPU_STR_ribbonNameSummary "Hotspot Summary"
 
 // Dashboard Summary
 #define GPU_STR_API_Summary "CPU API Summary"
 #define GPU_STR_GPU_Summary "GPU Commands Summary"
-#define GPU_STR_API_Call_Summary "API Calls Aggregated Data"
+#define GPU_STR_Command_List_Summary "Command List Summary"
+#define GPU_STR_API_Call_Summary "Call History Aggregated Data"
 #define GPU_STR_GPU_Call_Summary "GPU Cmds Aggregated Data"
+#define GPU_STR_Command_List_Call_Summary "Command List Aggregated Data"
 #define GPU_STR_Use_Scope_Summary "Use timeline selection scope"
-#define GPU_STR_Top_5_Summary "Top %1 %2 calls"
-#define GPU_STR_Top_Calls_Summary "Top %1 calls"
+#define GPU_STR_Top_20_Cpu_Calls_Summary "Top %1 %2 calls (CPU)"
+#define GPU_STR_Top_Cpu_Calls_Summary "Top %1 calls (CPU)"
+#define GPU_STR_Top_20_Gpu_Calls_Summary "Top %1 %2 calls (GPU)"
+#define GPU_STR_Top_Gpu_Calls_Summary "Top %1 calls (GPU)"
+
+#define GPU_STR_Top_20_CommandLists_Summary "Top %1 %2 command lists"
+#define GPU_STR_Top_CommandLists_Summary "Top %1 command lists"
 
 
 // Summary table captions
@@ -621,10 +638,17 @@
 #define GP_STR_SummaryTableColumnMaxTime "Max Time"
 #define GP_STR_SummaryTableColumnMinTime "Min Time"
 
-#define GP_STR_SummaryTop5TableColumnCallIndex "index"
-#define GP_STR_SummaryTop5TableColumnThreadId "Thread Id"
-#define GP_STR_SummaryTop5TableColumnTime "Time"
-#define GP_STR_SummaryTop5TableShowAll "Show all..."
+#define GP_STR_SummaryTableCommandListAddress "Address"
+#define GP_STR_SummaryTableCommandListStartTime "Start time"
+#define GP_STR_SummaryTableCommandListEndTime "End time"
+#define GP_STR_SummaryTableCommandListExecutionTime "Execution time"
+#define GP_STR_SummaryTableCommandListNumCommands "# of commands"
+#define GP_STR_SummaryTableCommandListGPUQueue "GPU queue"
+
+#define GP_STR_SummaryTop20TableColumnCallIndex "index"
+#define GP_STR_SummaryTop20TableColumnThreadId "Thread Id"
+#define GP_STR_SummaryTop20TableColumnTime "Time"
+#define GP_STR_SummaryTop20TableShowAll "Show all..."
 
 // draw calls ribbon
 #define GP_STR_DrawCallToolTip "%1: %2"

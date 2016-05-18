@@ -372,7 +372,6 @@ bool pdGDBDriver::terminate()
 
     m_processExistingThreads.clear();
     m_processStoppedThreads.clear();
-    //m_createdProcessThread = false;
 
     return retVal;
 }

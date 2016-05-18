@@ -27,6 +27,7 @@
 #endif
 
 #define AMDT_CURRENT_PROFILE_DB_VERSION     1
+#define AMDT_PROFILE_ALL_CALLPATHS  0xFFFFFFFFUL
 
 namespace AMDTProfilerDAL
 {
@@ -97,12 +98,14 @@ public:
     bool InsertSamplingCounter(gtUInt32 eventId, gtString name, gtString description);
     bool InsertSamplingConfig(gtUInt32 id, gtUInt16 counterId, gtUInt64 samplingInterval, gtUInt16 unitMask, bool isUserMode, bool isOsMode, bool edge);
     bool InsertCoreSamplingConfig(gtUInt64 id, gtUInt16 coreId, gtUInt32 samplingConfigId);
-    bool InsertProcessInfo(gtUInt64 pid, const gtString& path, bool is32Bit);
+    bool InsertProcessInfo(gtUInt64 pid, const gtString& path, bool is32Bit, bool hasCSS);
     bool InsertModuleInfo(gtUInt32 id, const gtString& path, bool isSystemModule, bool is32Bit, gtUInt32 type, gtUInt32 size, bool foundDebugInfo);
     bool InsertModuleInstanceInfo(gtUInt32 moduleInstanceId, gtUInt32 moduleId, gtUInt64 pid, gtUInt64 loadAddr);
     bool InsertProcessThreadInfo(gtUInt64 id, gtUInt64 pid, gtUInt64 threadId);
     bool InsertSamples(CPSampleData& sampleData);
     bool InsertFunction(gtUInt32 funcId, gtUInt32 modId, const gtString& funcName, gtUInt64 offset, gtUInt64 size);
+    bool InsertCallStackFrame(gtUInt32 callStackId, gtUInt64 processId, gtUInt64 funcId, gtUInt64 m_offset, gtUInt16 depth);
+    bool InsertCallStackLeaf(gtUInt32 callStackId, gtUInt64 processId, gtUInt64 funcId, gtUInt64 offset, gtUInt32 counterId, gtUInt64 selfSamples);
 
     //
     //  Update Queries
@@ -197,6 +200,27 @@ public:
     bool GetModuleInfo(AMDTUInt32 pid, AMDTModuleId mid, gtVector<AMDTProfileModuleInfo>& moduleInfoList);
     bool GetThreadInfo(AMDTUInt32 pid, gtUInt32 tid, gtVector<AMDTProfileThreadInfo>& threadInfoList);
 
+    bool GetProcessTotals(AMDTProcessId               procId,
+        gtVector<AMDTUInt32>        counterIdsList,
+        AMDTUInt64                  coreMask,
+        bool                        separateByCore,
+        AMDTSampleValueVec&         sampleValueVec);
+
+    bool GetModuleTotals(AMDTModuleId                moduleId,
+        AMDTProcessId               processId,
+        gtVector<AMDTUInt32>        counterIdsList,
+        AMDTUInt64                  coreMask,
+        bool                        separateByCore,
+        AMDTSampleValueVec&         sampleValueVec);
+
+    bool GetFunctionTotals(AMDTFunctionId         funcId,
+        AMDTProcessId          processId,
+        AMDTThreadId           threadId,
+        gtVector<AMDTUInt32>&  counterIdsList,
+        AMDTUInt64             coreMask,
+        bool                   separateByCore,
+        AMDTSampleValueVec&    sampleValueVec);
+
     bool GetProcessSummaryData(AMDTProcessId               processId,
                                gtVector<AMDTUInt32>        counterIdsList,      // samplingConfigId
                                AMDTUInt64                  coreMask,
@@ -225,6 +249,7 @@ public:
 
     bool GetFunctionSummaryData(AMDTProcessId               processId,           // for a given process or for all processes
                                 AMDTThreadId                threadId,
+                                AMDTModuleId                moduleId,
                                 gtVector<AMDTUInt32>        counterIdsList,      // samplingConfigId
                                 AMDTUInt64                  coreMask,
                                 bool                        separateByCore,
@@ -240,6 +265,19 @@ public:
                                 AMDTUInt64                  coreMask,
                                 bool                        separateByCore,
                                 AMDTProfileFunctionData&    functionData);
+
+    bool GetCallstackLeafData(AMDTProcessId       processId,
+                              AMDTUInt32          counterId,
+                              gtUInt32            callStackId,
+                              CallstackFrameVec&  leafs);
+
+    bool GetCallstackFrameData(AMDTProcessId       processId,
+                               gtUInt32            callstackId,
+                               CallstackFrameVec&  frames);
+
+    bool GetCallstackIds(AMDTProcessId        processId,
+                         AMDTFunctionId       funcId,
+                         gtVector<gtUInt32>&  csIds);
 
 private:
     class Impl;

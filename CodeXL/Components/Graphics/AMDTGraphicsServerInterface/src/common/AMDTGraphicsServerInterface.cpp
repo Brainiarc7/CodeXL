@@ -15,6 +15,10 @@
 
 #define GP_GRAPHICS_SERVER_STATE_STALLED "GRAPHICS_SERVER_STATE_STALLED"
 #define GP_GRAPHICS_SERVER_STATE_PROCESS_NOT_RUNNING "GRAPHICS_SERVER_STATE_PROCESS_NOT_RUNNING"
+
+#define GP_GRAPHICS_SERVER_DX12_API_TYPE  "DX12"
+#define GP_GRAPHICS_SERVER_VULKAN_API_TYPE  "Vulkan"
+
 // ---------------------------------------------------------------------------
 // Name:        GraphicsServerCommunication::GraphicsServerCommunication
 // Description: Constructor
@@ -88,7 +92,7 @@ bool GraphicsServerCommunication::ConnectServer(const gtASCIIString strServer)
 // Arguments:   strPid - Process ID to connect to and update current PID, (optional) can be "", function will then connect to known process
 // Return Val:  bool  - Success / failure
 // ---------------------------------------------------------------------------
-bool GraphicsServerCommunication::ConnectProcess(const gtASCIIString strPid)
+bool GraphicsServerCommunication::ConnectProcess(const gtASCIIString strPid, const gtASCIIString& apiType)
 {
     gtASCIIString strWebResponse;
 
@@ -99,24 +103,37 @@ bool GraphicsServerCommunication::ConnectProcess(const gtASCIIString strPid)
         m_strPid = strPid;
     }
 
-    if (0 < m_strPid.length())
+    if (apiType.isEmpty() == false)
+    {
+        if (apiType == GP_GRAPHICS_SERVER_DX12_API_TYPE || apiType == GP_GRAPHICS_SERVER_VULKAN_API_TYPE)
+        {
+            m_strApiHttpCommand = "/";
+            m_strApiHttpCommand.append(apiType);
+        }
+        else
+        {
+            gtString msg = L"Wrong API given : ";
+            msg.append(gtString().fromASCIIString(apiType.asCharArray()));
+            GT_ASSERT_EX(false, msg.asCharArray());
+            m_strApiHttpCommand = "";
+        }
+    }
+    if (m_strPid.isEmpty() == false && m_strApiHttpCommand.isEmpty() == false)
     {
         // Connect
-        retVal = SendCommandPid("/DX12/ShowStack", strWebResponse, "");
+        gtASCIIString showStack = m_strApiHttpCommand;
+        retVal = SendCommandPid(showStack.append("/ShowStack"), strWebResponse, "");
 
         if (retVal)
         {
-            retVal = SendCommandPid("/DX12/PushLayer=TimeControl", strWebResponse, "");
+            gtASCIIString timeControl = m_strApiHttpCommand;
+            retVal = SendCommandPid(timeControl.append("/PushLayer=TimeControl") , strWebResponse, "");
         }
 
         if (retVal)
         {
-            retVal = SendCommandPid("/DX12/TC/Settings.xml", strWebResponse, "");
-        }
-
-        if (retVal)
-        {
-            retVal = SendCommandPid("/DX12/AutoCapture", strWebResponse, "");
+            gtASCIIString tcSettings = m_strApiHttpCommand;
+            retVal = SendCommandPid(tcSettings.append("/TC/Settings.xml"), strWebResponse, "");
         }
     }
 
@@ -340,7 +357,8 @@ bool GraphicsServerCommunication::GetProcesses(gtASCIIString& strWebResponse)
 bool GraphicsServerCommunication::PushLogger(gtASCIIString& strWebResponse)
 {
     bool retVal = false;
-    retVal = SendCommandPid("/DX12/PushLayer=Logger", strWebResponse, "");
+    gtASCIIString command = m_strApiHttpCommand;
+    retVal = SendCommandPid(command.append("/PushLayer=Logger"), strWebResponse, "");
 
     return retVal;
 }
@@ -354,8 +372,8 @@ bool GraphicsServerCommunication::PushLogger(gtASCIIString& strWebResponse)
 bool GraphicsServerCommunication::PushObjectProcessor(gtASCIIString& strWebResponse)
 {
     bool retVal = false;
-
-    retVal = SendCommandPid("/DX12/PushLayer=ObjectDatabase", strWebResponse, "");
+    gtASCIIString command = m_strApiHttpCommand;
+    retVal = SendCommandPid(command.append("/PushLayer=ObjectDatabase"), strWebResponse, "");
 
     return retVal;
 }
@@ -374,9 +392,9 @@ bool GraphicsServerCommunication::GetLinkedTrace(gtASCIIString& strLinkedTrace)
 
     if (true == retVal)
     {
-
         // linked trace, always
-        retVal = SendCommandPid("/DX12/LOG/LinkedTrace.txt", strLinkedTrace, "");
+        gtASCIIString linkedTrace = m_strApiHttpCommand;
+        retVal = SendCommandPid(linkedTrace.append("/LOG/LinkedTrace.txt"), strLinkedTrace, "");
 
         if (retVal)
         {
@@ -400,11 +418,13 @@ bool GraphicsServerCommunication::GetObjectTree(gtASCIIString& strObjectTree)
     gtASCIIString httpRtnString;
 
     // Object tree
-    retVal = SendCommandPid("/DX12/PushLayer=ObjectDatabase", httpRtnString, "");
+    gtASCIIString command = m_strApiHttpCommand;
+    retVal = SendCommandPid(command.append("/PushLayer=ObjectDatabase"), httpRtnString, "");
 
     if (true == retVal)
     {
-        retVal = SendCommandPid("/DX12/DB/ObjectTree.xml", httpRtnString, "");
+        command = m_strApiHttpCommand;
+        retVal = SendCommandPid(command.append("/DB/ObjectTree.xml"), httpRtnString, "");
 
         if (true == retVal)
         {
@@ -430,11 +450,13 @@ bool GraphicsServerCommunication::GetObjectDatabase(gtASCIIString& strFullObjDBa
     gtASCIIString httpRtnString;
 
     // Get database
-    retVal = SendCommandPid("/DX12/PushLayer=ObjectDatabase", httpRtnString, "");
+    gtASCIIString objDBPushlayer = m_strApiHttpCommand;
+    retVal = SendCommandPid(objDBPushlayer.append("/PushLayer=ObjectDatabase"), httpRtnString, "");
 
     if (true == retVal)
     {
-        retVal = SendCommandPid("/DX12/DB/ObjectDatabase.xml", httpRtnString, "");
+        gtASCIIString dbObjDBPushlayer = m_strApiHttpCommand;
+        retVal = SendCommandPid(dbObjDBPushlayer.append("/DB/ObjectDatabase.xml"), httpRtnString, "");
 
         if (true == retVal)
         {
@@ -477,6 +499,7 @@ bool GraphicsServerCommunication::GetTimingLog(gtASCIIString& strTimingLog)
     OS_DEBUG_LOG_TRACER_WITH_RETVAL(retVal);
     gtASCIIString httpRtnString;
 
+    //TODO use DX11 as parameter
     retVal = SendCommandPid("/DX11/LOG/TimingLog.txt", httpRtnString, "");
 
     if (true == retVal)
@@ -493,7 +516,8 @@ bool GraphicsServerCommunication::PopLayer()
     bool retVal = false;
     gtASCIIString httpRtnString;
 
-    retVal = SendCommandPid("/DX12/PopLayer", httpRtnString, "");
+    gtASCIIString poplayer = m_strApiHttpCommand;
+    retVal = SendCommandPid(poplayer.append("/PopLayer"), httpRtnString, "");
 
     return retVal;
 }
@@ -504,11 +528,13 @@ bool GraphicsServerCommunication::GetCounters(gtASCIIString& returnedPage)
     OS_DEBUG_LOG_TRACER_WITH_RETVAL(retVal);
     gtASCIIString httpRtnString;
 
-    retVal = SendCommandPid("/DX12/PushLayer=FrameProfiler", httpRtnString, "");
+    gtASCIIString commandPrefix = m_strApiHttpCommand;
+    retVal = SendCommandPid(commandPrefix.append("/PushLayer=FrameProfiler"), httpRtnString, "");
 
     if (retVal)
     {
-        retVal = SendCommandPid("/DX12/FP/CounterInfo.xml", httpRtnString, "");
+	    commandPrefix = m_strApiHttpCommand;
+        retVal = SendCommandPid(commandPrefix.append("/FP/CounterInfo.xml"), httpRtnString, "");
 
         if (retVal)
         {
@@ -525,11 +551,13 @@ bool GraphicsServerCommunication::SetCounters(const gtVector<int>& selectedCount
     bool retVal = false;
     gtASCIIString httpRtnString;
 
-    retVal = SendCommandPid("/DX12/PushLayer=FrameProfiler", httpRtnString, "");
+    gtASCIIString commandPrefix = m_strApiHttpCommand;
+    retVal = SendCommandPid(commandPrefix.append("/PushLayer=FrameProfiler"), httpRtnString, "");
 
     if (retVal)
     {
-        gtASCIIString sendCommand("/DX12/FP/CounterSelect.txt=");
+	    commandPrefix = m_strApiHttpCommand;
+        gtASCIIString sendCommand(commandPrefix.append("/FP/CounterSelect.txt="));
 
         int numCounters = (int)selectedCounters.size();
 
@@ -622,19 +650,22 @@ bool GraphicsServerCommunication::GetCurrentFrameInfo(gtASCIIString& frameInfoAs
     OS_DEBUG_LOG_TRACER_WITH_RETVAL(retVal);
 
     gtASCIIString httpRtnString;
-    retVal = SendCommandPid("/DX12/PushLayer=FrameDebugger", httpRtnString, "");
+    gtASCIIString commandPrefix = m_strApiHttpCommand;
+    retVal = SendCommandPid(commandPrefix.append("/PushLayer=FrameDebugger"), httpRtnString, "");
     GT_ASSERT(retVal);
 
     if (retVal)
     {
+        commandPrefix = m_strApiHttpCommand;
         // Send a request to get the current frame info
-        retVal = SendCommandPid("/DX12/FD/GetCurrentFrameInfo.xml", frameInfoAsXML, "");
+        retVal = SendCommandPid(commandPrefix.append("/FD/GetCurrentFrameInfo.xml"), frameInfoAsXML, "");
         GT_ASSERT(retVal);
 
         if (retVal)
         {
+            commandPrefix = m_strApiHttpCommand;
             // Send a request to get the current frame thumbnail
-            retVal = SendCommandWithBinaryData("/DX12/FD/GetFrameBufferImage.png?width=512?height=512", pImageBuffer, imageSize);
+            retVal = SendCommandWithBinaryData(commandPrefix.append("/FD/GetFrameBufferImage.png?width=512?height=512"), pImageBuffer, imageSize);
 
             if (retVal)
             {
@@ -650,10 +681,11 @@ bool GraphicsServerCommunication::GetCurrentFrameInfo(gtASCIIString& frameInfoAs
 // ---------------------------------------------------------------------------
 // Name:        GraphicsServerCommunication::CaptureFrame
 // Description: Capture all available frame information to disk, trace and objects
-// Arguments:   frameInfoAsXML(return) - path that contains captured metadata file
+// Arguments:   numberFramesToCapture number of frames to capture
+//              frameInfoAsXML(return) - path that contains captured metadata file
 // Return Val:  bool  - Success / failure
 // ---------------------------------------------------------------------------
-bool GraphicsServerCommunication::CaptureFrame(gtASCIIString& frameInfoAsXML)
+bool GraphicsServerCommunication::CaptureFrame(int numberFramesToCapture, gtASCIIString& frameInfoAsXML)
 {
     bool retVal = false;
     OS_DEBUG_LOG_TRACER_WITH_RETVAL(retVal);
@@ -664,13 +696,13 @@ bool GraphicsServerCommunication::CaptureFrame(gtASCIIString& frameInfoAsXML)
     if (retVal == true)
     {
         // Capture the frame, =3 is includes the save XML frame data, need object database active to include the object database.
-        retVal = SendCommandPid("/DX12/FrameCaptureWithSave.txt=3", frameInfoAsXML, "");
+        gtASCIIString commandToSend = m_strApiHttpCommand;
+        commandToSend.append("/FrameCaptureWithSave?CaptureType=3");
+        commandToSend.appendFormattedString("&CaptureCount=%d", numberFramesToCapture);
+        retVal = SendCommandPid(commandToSend, frameInfoAsXML, "");
 
-        if (retVal)
-        {
-            // Pop the logger layer
-            PopLayer();
-        }
+        // Pop the logger layer
+        PopLayer();
     }
 
     return retVal;
@@ -775,21 +807,28 @@ void GraphicsServerCommunication::CheckServerStatus(unsigned char* pBuffer, unsi
     }
 }
 
+/// Replace any special HTTP characters
+/// \param ioCommandText the command string to modify. This string is fixed up in place.
+void GraphicsServerCommunication::ReplaceSpecialHTTPCharacters(gtASCIIString& ioCommandText)
+{
+    ioCommandText.replace(" ", "%20");
+    ioCommandText.replace("\"", "%22");
+    ioCommandText.replace("\\", "%5C");
+    ioCommandText.replace("-", "%E2%80%93");
+    ioCommandText.replace("&", "%26");
+    ioCommandText.replace("'", "%27");
+    ioCommandText.replace("`", "%60");
+    ioCommandText.replace("`", "%E2%80%98");
+}
+
 bool GraphicsServerCommunication::SetSessionName(const gtASCIIString& sessionName)
 {
     bool retVal = false;
     // Connect
-    gtASCIIString commandText, strWebResponse;
-    commandText.appendFormattedString("/DX12/SetSessionName.txt=%s", sessionName.asCharArray());
-    // Replace any special HTTP characters
-    commandText.replace(" ", "%20");
-    commandText.replace("\"", "%22");
-    commandText.replace("\\", "%5C");
-    commandText.replace("-", "%E2%80%93");
-    commandText.replace("&", "%26");
-    commandText.replace("'", "%27");
-    commandText.replace("`", "%60");
-    commandText.replace("`", "%E2%80%98");
+    gtASCIIString commandText = m_strApiHttpCommand;
+    gtASCIIString strWebResponse;
+    commandText.appendFormattedString("/SetSessionName.txt=%s", sessionName.asCharArray());
+    ReplaceSpecialHTTPCharacters(commandText);
     retVal = SendCommandPid(commandText, strWebResponse, "");
     return retVal;
 }
@@ -799,18 +838,10 @@ bool GraphicsServerCommunication::SetProjectName(const gtASCIIString& projectNam
     bool retVal = false;
 
     // Connect
-    gtASCIIString commandText, strWebResponse;
-    commandText.appendFormattedString("/DX12/SetProjectName.txt=%s", projectName.asCharArray());
-    // Replace any special HTTP characters
-    commandText.replace(" ", "%20");
-    commandText.replace("\"", "%22");
-    commandText.replace("\\", "%5C");
-    commandText.replace("-", "%E2%80%93");
-    commandText.replace("&", "%26");
-    commandText.replace("'", "%27");
-    commandText.replace("`", "%60");
-    commandText.replace("`", "%E2%80%98");
-
+    gtASCIIString commandText = m_strApiHttpCommand;
+    gtASCIIString strWebResponse;
+    commandText.appendFormattedString("/SetProjectName.txt=%s", projectName.asCharArray());
+    ReplaceSpecialHTTPCharacters(commandText);
     retVal = SendCommandPid(commandText, strWebResponse, "");
     return retVal;
 }

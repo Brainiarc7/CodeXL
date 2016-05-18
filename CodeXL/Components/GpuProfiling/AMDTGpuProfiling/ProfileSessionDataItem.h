@@ -79,6 +79,8 @@ public:
         SESSION_ITEM_UNKNOWN = -1,
         SESSION_ITEM_INDEX_COLUMN = 0,
         SESSION_ITEM_INTERFACE_COLUMN,
+        SESSION_ITEM_COMMAND_LIST_COLUMN,
+        SESSION_ITEM_COMMAND_BUFFER_COLUMN,
         SESSION_ITEM_CALL_COLUMN,
         SESSION_ITEM_PARAMETERS_COLUMN,
         SESSION_ITEM_RESULT_COLUMN,
@@ -220,6 +222,9 @@ public:
     /// Queue name
     QString QueueName() const;
 
+    /// Command list pointer (only applicable for DX12 GPU items)
+    QString CommandListPointer() const;
+
     /// The queue name, without the leading zeros
     static QString QueueDisplayName(const QString& queueName) ;
 
@@ -297,6 +302,11 @@ public:
     /// \param apiType[out] the api type
     /// \return true for success (false if this is not a DX12 item)
     bool GetDX12APIType(eAPIType& apiType);
+
+    /// Return the Vulkan api type
+    /// \param apiType[out] the api type
+    /// \return true for success (false if this is not a DX12 item)
+    bool GetVKAPIType(vkAPIType& apiType);
 
     /// Get the item sample id
     int GetSampleId()const { return m_sampleId; }

@@ -28,6 +28,7 @@
 #include <AMDTOSWrappers/Include/osCpuid.h>
 #include <AMDTOSWrappers/Include/osDirectory.h>
 #include <AMDTOSWrappers/Include/osFilePath.h>
+#include <AMDTOSWrappers/Include/osProcess.h>
 #include <AMDTOSWrappers/Include/osDebugLog.h>
 
 #include <AMDTCpuPerfEventUtils/inc/EventEncoding.h>
@@ -35,7 +36,6 @@
 #include <AMDTExecutableFormat/inc/PeFile.h>
 #include <AMDTCpuCallstackSampling/inc/CallStackBuilder.h>
 #include <AMDTCpuCallstackSampling/inc/CssWriter.h>
-#include <AMDTCpuProfilingRawData/inc/ProfilerDataDBWriter.h>
 
 #include <psapi.h>
 #include <sstream>
@@ -72,9 +72,9 @@ enum HardcodedEventType
     #define KERNEL_SPACE_START  0x80000000
 #endif
 
-//const QString UNKNOWN_MODULE_PID = "unknown module pid";
 const QString UNKNOWN_MODULE_STR = "Unknown Module";
 #define UNKNOWN_KERNEL_SAMPLES  L"Unknown Kernel Samples"
+#define UNKNOWN_MODULE_PID_BUF_LEN 30
 
 const QString TI_FILE_EXT = ".ti";
 const QString PRD_FILE_EXT = ".prd";
@@ -247,15 +247,6 @@ void GetFreeVM(gtUInt64& pFreeVM)
     return;
 }
 
-#ifdef AMDT_ENABLE_CPUPROF_DB
-static gtUInt32 generateFuncId(gtUInt16 moduleId, gtUInt16 funcSeq)
-{
-    gtUInt32 funcId = moduleId;
-    funcId = (funcId << 16) | funcSeq;
-    return funcId;
-}
-#endif
-
 PrdTranslator::ProcessInfo::ProcessInfo(ProcessIdType processId) : m_processId(processId)
 {
     m_exeAnalyzers.reserve(64);
@@ -386,10 +377,6 @@ PrdTranslator::PrdTranslator(QString dataFile, bool collectStat) : m_pfnProgress
     m_pSearchPath = NULL;
     m_pServerList = NULL;
     m_pCachePath = NULL;
-
-#ifdef AMDT_ENABLE_CPUPROF_DB
-    m_nextModuleId = 1;
-#endif
 }
 
 PrdTranslator::~PrdTranslator()
@@ -440,6 +427,11 @@ PrdTranslator::~PrdTranslator()
     }
 
     fnCleanupMaps();
+
+    if (nullptr != m_dbWriter)
+    {
+        delete m_dbWriter;
+    }
 }
 
 void PrdTranslator::InitializeProgressBar(const gtString& caption, bool incremental)
@@ -803,8 +795,6 @@ void PrdTranslator::AggregateKnownModuleSampleData(
             // Find again
             mit = pMMap->find(ModName);
         }
-
-#ifdef AMDT_ENABLE_CPUPROF_DB
         else
         {
             // Module is already present in the map. Just append the new instance info.
@@ -829,8 +819,6 @@ void PrdTranslator::AggregateKnownModuleSampleData(
                 mit->second.m_moduleInstanceInfo.emplace_back(pid, loadAddr, instanceId);
             }
         }
-
-#endif
 
         if ((pModInfo->moduleType == evJavaModule || pModInfo->moduleType == evManaged || pModInfo->moduleType == evOCLModule) &&
             NULL != pModInfo->pFunctionName && L'\0' != pModInfo->pFunctionName[0])
@@ -925,9 +913,7 @@ void PrdTranslator::AggregateKnownModuleSampleData(
                             }
                         }
 
-#ifdef AMDT_ENABLE_CPUPROF_DB
-                        functionId = generateFuncId(module.m_moduleId, pFuncInfo->m_funcId);
-#endif
+                        functionId = pFuncInfo->m_funcId;
                     }
                 }
                 else
@@ -976,7 +962,6 @@ void PrdTranslator::InitNewModule(CpuProfileModule& mod,
     {
         case evPEModule:
             mod.m_modType = CpuProfileModule::UNMANAGEDPE;
-#ifdef AMDT_ENABLE_CPUPROF_DB
 
             if (nullptr != pModInfo && nullptr != pModInfo->pPeFile)
             {
@@ -984,7 +969,6 @@ void PrdTranslator::InitNewModule(CpuProfileModule& mod,
                 mod.m_isDebugInfoAvailable = pModInfo->pPeFile->IsDebugInfoAvailable();
             }
 
-#endif // AMDT_ENABLE_CPUPROF_DB
             break;
 
         case evJavaModule:
@@ -1005,10 +989,8 @@ void PrdTranslator::InitNewModule(CpuProfileModule& mod,
 
     mod.setPath(ModName);
     mod.m_base = pModInfo->ModuleStartAddr;
-#ifdef AMDT_ENABLE_CPUPROF_DB
-    mod.m_moduleId = AtomicAdd(m_nextModuleId, 1);
+    mod.m_moduleId = pModInfo->moduleId;
     mod.m_moduleInstanceInfo.emplace_back(pModInfo->processID, pModInfo->ModuleStartAddr, pModInfo->instanceId);
-#endif
 
     // currently I don't use size and tsc in CA --Lei
     mod.m_size = 0;
@@ -1106,7 +1088,7 @@ void PrdTranslator::AggregateUnknownModuleSampleData(
     else
     {
         // unknown user module
-        wchar_t buf[20] = {L'\0'};
+        wchar_t buf[UNKNOWN_MODULE_PID_BUF_LEN] = {L'\0'};
         swprintf(buf, sizeof(buf) - 1, L" (PID %d)", sampInfo.pid);
         tmp_modName = UNKNOWN_MODULE_STR.toStdWString().c_str();
         tmp_modName += gtString(buf);
@@ -1130,10 +1112,8 @@ void PrdTranslator::AggregateUnknownModuleSampleData(
         mod.m_size = 0;
         mod.m_is32Bit = fnIsJITProcess32Bit(pModInfo->processID);
         b_is32bit = mod.m_is32Bit;
-#ifdef AMDT_ENABLE_CPUPROF_DB
-        mod.m_moduleId = AtomicAdd(m_nextModuleId, 1);
+        mod.m_moduleId = pModInfo->moduleId;
         mod.m_moduleInstanceInfo.emplace_back(pModInfo->processID, pModInfo->ModuleStartAddr, pModInfo->instanceId);
-#endif
 
         // CLU profiles IBS Op event, record IBS sample only when profiling IBS Op
         if (!IsIbsOpEvent(eventType) || m_runInfo->m_isProfilingIbsOp)
@@ -1151,7 +1131,7 @@ void PrdTranslator::AggregateUnknownModuleSampleData(
     else
     {
         b_is32bit = mit->second.m_is32Bit;
-#ifdef AMDT_ENABLE_CPUPROF_DB
+
         // Module is already present in the map. Just append the new instance info.
         gtUInt64 pid = pModInfo->processID;
         gtUInt64 loadAddr = pModInfo->ModuleStartAddr;
@@ -1173,8 +1153,6 @@ void PrdTranslator::AggregateUnknownModuleSampleData(
         {
             mit->second.m_moduleInstanceInfo.emplace_back(pid, loadAddr, instanceId);
         }
-
-#endif
 
         // CLU profiles IBS Op event, record IBS sample only when profiling IBS Op
         if (!IsIbsOpEvent(eventType) || m_runInfo->m_isProfilingIbsOp)
@@ -1256,7 +1234,7 @@ void PrdTranslator::AggregatePidSampleData(
         if (S_OK != fnFindProcessName(prdRecord.m_PID, processName, OS_MAX_PATH))
         {
             gtString tmp;
-            wchar_t buf[20] = {L'\0'};
+            wchar_t buf[UNKNOWN_MODULE_PID_BUF_LEN] = {L'\0'};
             swprintf(buf, sizeof(buf) - 1, L" (PID %lld)", prdRecord.m_PID);
             tmp = UNKNOWN_MODULE_STR.toStdWString().c_str();
             tmp += gtString(buf);
@@ -1877,14 +1855,10 @@ HRESULT PrdTranslator::ThreadTranslateDataPrdFile(QString proFile,
                 hr = GetModuleInfoHelper((void*) &prdRecord, &modInfo, evTBPEBPRecord, proFile);
                 END_TICK_COUNT(findModuleInfo);
 
-#ifdef AMDT_ENABLE_CPUPROF_DB
                 if (modInstanceMap.end() == modInstanceMap.find(modInfo.instanceId))
                 {
                     modInstanceMap.emplace(modInfo.instanceId, std::make_tuple(gtString(modInfo.pModulename), modInfo.processID, modInfo.ModuleStartAddr));
                 }
-#else
-                GT_UNREFERENCED_PARAMETER(modInstanceMap);
-#endif
 
                 AggregateSampleData(prdRecord, &modInfo, &processMap, &moduleMap, pidModaddrItrMap, 1U, pStats);
 
@@ -3184,6 +3158,7 @@ bool PrdTranslator::AggregateThreadMaps(PidProcessList& procList, NameModuleList
     auto miIter = modInstanceList.begin();
     modInstanceMap = *miIter;
     ++miIter;
+
     while (miIter != modInstanceList.end())
     {
         ModInstanceMap* miMap = *miIter;
@@ -3213,6 +3188,24 @@ HRESULT PrdTranslator::WriteProfile(const QString& proFile,
                                     const ModInstanceMap& modInstanceMap)
 {
     HRESULT  res = S_OK;
+
+    gtString createDbEnvStr;
+    bool createDb = false;
+
+    if (osGetCurrentProcessEnvVariableValue(L"AMDT_CPUPROFILE_CREATE_DB", createDbEnvStr))
+    {
+        createDb = createDbEnvStr.isEqualNoCase(L"YES");
+    }
+
+    if (createDb)
+    {
+        m_dbWriter = new ProfilerDataDBWriter;
+    }
+
+    if (nullptr != m_dbWriter)
+    {
+        m_dbWriter->Initialize(proFile.toStdWString().c_str());
+    }
 
     // Write the CSS files to the same directory as the profile file
     for (gtMap<ProcessIdType, ProcessInfo*>::iterator it = m_processInfos.begin(), itEnd = m_processInfos.end(); it != itEnd; ++it)
@@ -3296,6 +3289,100 @@ HRESULT PrdTranslator::WriteProfile(const QString& proFile,
         return res;
     }
 
+    if (nullptr != m_dbWriter)
+    {
+        // Write the callstack info to DB
+        for (auto procIter = m_processInfos.begin(), procIterEnd = m_processInfos.end(); procIter != procIterEnd; ++procIter)
+        {
+            ProcessInfo* pProcessInfo = procIter->second;
+
+            if (NULL != pProcessInfo && 0U != pProcessInfo->m_callGraph.GetOrder())
+            {
+                ProcessIdType pid = procIter->first;
+                CallGraph& callGraph = pProcessInfo->m_callGraph;
+                TiProcessWorkingSetQuery workingSet(pid);
+
+                gtUInt32 callStackId = 0;
+                CPACallStackFrameInfoList csFrameInfoList;
+                CPACallStackLeafInfoList  csLeafInfoList;
+
+                for (auto stackIt = callGraph.GetBeginCallStack(), stackItEnd = callGraph.GetEndCallStack(); stackIt != stackItEnd; ++stackIt)
+                {
+                    CallStack& callStack = **stackIt;
+                    gtUInt16 callSiteDepth = 0;
+                    ++callStackId;
+
+                    for (auto siteIt = callStack.begin(), siteItEnd = callStack.end(); siteIt != siteItEnd; ++siteIt)
+                    {
+                        CallSite& callSite = *siteIt;
+                        ++callSiteDepth;
+                        gtUInt64 funcId = 0;
+
+                        ExecutableFile* pExe = workingSet.FindModule(callSite.m_traverseAddr);
+                        gtUInt64 loadAddr = (nullptr != pExe) ? pExe->GetLoadAddress() : 0ULL;
+                        gtUInt64 offset = callSite.m_traverseAddr - loadAddr;
+
+                        if (pExe != nullptr)
+                        {
+                            gtString moduleName = pExe->GetFilePath();
+                            auto modIt = moduleMap.find(moduleName);
+
+                            if (modIt != moduleMap.end())
+                            {
+                                funcId = modIt->second.m_moduleId << 16;
+                                auto pFunc = modIt->second.findFunction(callSite.m_traverseAddr);
+
+                                if (pFunc != nullptr)
+                                {
+                                    funcId |= pFunc->m_functionId;
+                                }
+                            }
+                        }
+
+                        csFrameInfoList.emplace_back(callStackId, pid, funcId, offset, callSiteDepth);
+                    }
+
+                    const EventSampleList& samples = callStack.GetEventSampleList();
+
+                    for (const auto& sampleInfo : samples)
+                    {
+                        gtUInt64 funcId = 0;
+
+                        ExecutableFile* pExe = workingSet.FindModule(sampleInfo.m_pSite->m_traverseAddr);
+                        gtUInt64 loadAddr = (nullptr != pExe) ? pExe->GetLoadAddress() : 0ULL;
+                        gtUInt64 offset = sampleInfo.m_pSite->m_traverseAddr - loadAddr;
+
+                        if (pExe != nullptr)
+                        {
+                            gtString moduleName = pExe->GetFilePath();
+                            auto modIt = moduleMap.find(moduleName);
+
+                            if (modIt != moduleMap.end())
+                            {
+                                funcId = modIt->second.m_moduleId << 16;
+                                auto pFunc = modIt->second.findFunction(sampleInfo.m_pSite->m_traverseAddr);
+
+                                if (pFunc != nullptr)
+                                {
+                                    funcId |= pFunc->m_functionId;
+                                }
+                            }
+                        }
+
+                        csLeafInfoList.emplace_back(
+                            callStackId, pid, funcId, offset, sampleInfo.m_eventId, sampleInfo.m_count);
+                    }
+                }
+
+                m_dbWriter->Write(csFrameInfoList);
+                csFrameInfoList.clear();
+
+                m_dbWriter->Write(csLeafInfoList);
+                csLeafInfoList.clear();
+            }
+        }
+    }
+
     return res;
 }
 
@@ -3362,23 +3449,21 @@ bool PrdTranslator::WriteProfileFile(const gtString& path,
 
     UpdateProgressBar(80ULL, 100ULL);
 
-#ifdef AMDT_ENABLE_CPUPROF_DB
-    gtUInt64 startTime = GetTickCount();
-
-    gtVector<std::tuple<gtUInt32, gtUInt32>> processThreadList;
-    fnGetProcessThreadList(processThreadList);
-
-    ProfilerDataDBWriter DBWriter;
-    //TODO: cpu affinity should be part of CpuProfileInfo i.e. info parameter
-    DBWriter.Write(path, info, m_runInfo->m_cpuAffinity, *procMap, processThreadList, *modMap, *pModInstanceMap, pTopMap);
-
-    if (m_collectStat)
+    if (nullptr != m_dbWriter)
     {
-        OS_OUTPUT_FORMAT_DEBUG_LOG(OS_DEBUG_LOG_DEBUG, L"Elapsed Time: DB Write: (%d ms)", (GetTickCount() - startTime));
+        gtUInt64 startTime = GetTickCount();
+
+        gtVector<std::tuple<gtUInt32, gtUInt32>> processThreadList;
+        fnGetProcessThreadList(processThreadList);
+
+        //TODO: cpu affinity should be part of CpuProfileInfo i.e. info parameter
+        m_dbWriter->Write(info, m_runInfo->m_cpuAffinity, *procMap, processThreadList, *modMap, *pModInstanceMap, pTopMap);
+
+        if (m_collectStat)
+        {
+            OS_OUTPUT_FORMAT_DEBUG_LOG(OS_DEBUG_LOG_DEBUG, L"Elapsed Time: DB Write: (%d ms)", (GetTickCount() - startTime));
+        }
     }
-#else
-    GT_UNREFERENCED_PARAMETER(pModInstanceMap);
-#endif
 
     if (!writer.Write(path, &info, procMap, modMap, pTopMap))
     {

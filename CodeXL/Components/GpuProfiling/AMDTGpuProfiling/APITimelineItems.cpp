@@ -13,10 +13,13 @@
 // Change list:    $Change: 569613 $
 //=====================================================================
 
-// Local:
+// Infra:
+#include <AMDTApplicationComponents/Include/acFunctions.h>
 #include <AMDTApplicationComponents/Include/Timeline/acTimeline.h>
-#include "APITimelineItems.h"
-#include "TraceTable.h"
+
+// Local:
+#include <AMDTGpuProfiling/APITimelineItems.h>
+#include <AMDTGpuProfiling/TraceTable.h>
 
 
 APITimelineItem::APITimelineItem() : acAPITimelineItem(std::numeric_limits<quint64>::max(), std::numeric_limits<quint64>::min(), -1), m_pTraceTableItem(NULL)
@@ -67,3 +70,34 @@ PerfMarkerTimelineItem::PerfMarkerTimelineItem(quint64 startTime, quint64 endTim
 }
 
 
+CommandListTimelineItem::CommandListTimelineItem(quint64 startTime, quint64 endTime): acTimelineItem(startTime, endTime)
+{
+
+}
+
+void CommandListTimelineItem::tooltipItems(acTimelineItemToolTip& tooltip) const
+{
+    tooltip.add("Command list", text());
+
+    quint64 timelineStartTime = 0;
+    if (m_pParentBranch != NULL)
+    {
+        acTimeline* timeline = m_pParentBranch->parentTimeline();
+
+        if (timeline != NULL)
+        {
+            timelineStartTime = timeline->startTime();
+        }
+    }
+    double fnum = (m_nStartTime - timelineStartTime) / 1e6; // convert to milliseconds
+    QString strNum = QString(tr("%1 millisecond")).arg(fnum, 0, 'f', 3);
+    tooltip.add(tr("Start Time"), strNum);
+
+    fnum = (m_nEndTime - timelineStartTime) / 1e6; // convert to milliseconds
+    strNum = QString(tr("%1 millisecond")).arg(fnum, 0, 'f', 3);
+    tooltip.add(tr("End Time"), strNum);
+
+    quint64 duration = m_nEndTime - m_nStartTime;
+    QString strDuration = QString(tr("%1 millisecond")).arg(NanosecToTimeString(duration, true, false));
+    tooltip.add(tr("Duration"), strDuration);
+}

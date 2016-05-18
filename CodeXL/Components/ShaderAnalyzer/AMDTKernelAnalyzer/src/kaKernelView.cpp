@@ -103,11 +103,13 @@ void kaKernelView::displayFile(const osFilePath& detailedFilePath, const osFileP
                 gtString programName = kaUtils::ToGtString(path.parent_path().parent_path().filename());
 
                 kaPlatform platform = KA_PROJECT_DATA_MGR_INSTANCE.GetBuildPlatform(programName);
-                kaSourceFile* pFileData = KA_PROJECT_DATA_MGR_INSTANCE.dataFileByPath(kernelFilePath);
                 gtString buildProfile;
-                GT_IF_WITH_ASSERT(pFileData != nullptr)
+                kaProgram* pProgram = KA_PROJECT_DATA_MGR_INSTANCE.GetProgram(programName);
+                kaDxFolder* pDXFolder = dynamic_cast<kaDxFolder*>(pProgram);
+                if (pDXFolder != nullptr)
                 {
-                    buildProfile = pFileData->BuildProfile();
+                    int fileID = KA_PROJECT_DATA_MGR_INSTANCE.GetFileID(kernelFilePath);
+                    pDXFolder->GetFileProfile(fileID, buildProfile);
                 }
                 pCreatedView = new kaStatisticsView(this, kernelFilePath, detailedFilePath, platform, buildProfile);
             }
@@ -885,7 +887,7 @@ void kaKernelView::onFindPrev()
     // m_isSearchUp flag is up only when find prev button is pressed
     acFindParameters::Instance().m_isSearchUp = true;
     onFindNext();
-    acFindParameters::Instance().m_isSearchUp = false;;
+    acFindParameters::Instance().m_isSearchUp = false;
 }
 
 // ---------------------------------------------------------------------------

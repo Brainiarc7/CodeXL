@@ -14,17 +14,49 @@
 
 #include <AMDTOSWrappers/Include/osFilePath.h>
 #include <AMDTOSWrappers/Include/osApplication.h>
-
+#include <AMDTOSWrappers/Include/osGeneralFunctions.h>
 #include <AMDTCpuPerfEventUtils/inc/EventEngine.h>
-
 #include <AMDTCommonProfileDataTypes.h>
-
 #include <CpuProfileInfo.h>
 #include <CpuProfileModule.h>
 #include <CpuProfileProcess.h>
-
-#ifdef AMDT_ENABLE_CPUPROF_DB
 #include <ProfilerDataDBWriter.h>
+
+static inline gtUInt32 generateFuncId(gtUInt16 moduleId, gtUInt16 funcSeq)
+{
+    gtUInt32 funcId = moduleId;
+    funcId = (funcId << 16) | funcSeq;
+    return funcId;
+}
+
+bool ProfilerDataDBWriter::Initialize(const gtString& path)
+{
+    bool rc = false;
+
+    if (m_pCpuProfDbAdapter != nullptr)
+    {
+        // Remove trailing '.ebp' from path
+        gtString dbPath = path;
+
+        if (dbPath.endsWith(gtString(L".ebp")))
+        {
+            int pos = dbPath.reverseFind(L".");
+            dbPath.extruct(pos, dbPath.length());
+        }
+
+        gtString dbExtn;
+        m_pCpuProfDbAdapter->GetDbFileExtension(dbExtn);
+        dbPath.append(dbExtn);
+        rc = m_pCpuProfDbAdapter->CreateDb(dbPath, AMDT_PROFILE_MODE_AGGREGATION);
+    }
+
+    if (rc)
+    {
+        m_isWriterReady = true;
+    }
+
+    return rc;
+}
 
 void ProfilerDataDBWriter::PackSessionInfo(const CpuProfileInfo& profileInfo, gtUInt64 cpuAffinity, AMDTProfileSessionInfo& sessionInfo)
 {
@@ -103,125 +135,6 @@ bool ProfilerDataDBWriter::InitializeEventsXMLFile(gtUInt32 cpuFamily, gtUInt32 
     return rv;
 }
 
-bool ProfilerDataDBWriter::IsWindowsSystemModuleNoExt(const gtString& absolutePath)
-{
-    bool ret = false;
-
-    // 21 is the minimum of: "\\windows\\system\\*.***"
-    if (absolutePath.length() >= 21)
-    {
-        gtString lowerAbsolutePath = absolutePath;
-
-        for (int i = 0, e = lowerAbsolutePath.length(); i != e; ++i)
-        {
-            wchar_t& wc = lowerAbsolutePath[i];
-
-            if ('/' == wc)
-            {
-                wc = '\\';
-            }
-            else
-            {
-                // Paths in windows are case insensitive
-                wc = tolower(wc);
-            }
-        }
-
-        int rootPos = lowerAbsolutePath.find(L"\\windows\\");
-
-        if (-1 != rootPos)
-        {
-            // 9 is the length of "\\windows\\"
-            rootPos += 9;
-
-            if (lowerAbsolutePath.compare(rootPos, 3, L"sys") == 0)
-            {
-                rootPos += 3;
-
-                if (lowerAbsolutePath.compare(rootPos, 4, L"tem\\") == 0 || // "\\windows\\system\\"
-                    lowerAbsolutePath.compare(rootPos, 6, L"tem32\\") == 0 || // "\\windows\\system32\\"
-                    lowerAbsolutePath.compare(rootPos, 6, L"wow64\\") == 0)   // "\\windows\\syswow64\\"
-                {
-                    ret = true;
-                }
-            }
-            else
-            {
-                if (lowerAbsolutePath.compare(rootPos, 7, L"winsxs\\") == 0)
-                {
-                    ret = true;
-                }
-            }
-        }
-    }
-
-    return ret;
-}
-
-// This function tries to tell whether a given module name is a Linux system library.
-//
-// The special name "[kernel.kallsyms]" is the module name for samples within the kernel.
-// Then, if the path does not start with '/' we assume it's not a system library.
-// The name must then start with "lib" and have ".so" within it.
-// If so, we consider these files to be system libraries if they are from:
-//          /lib*
-//          /usr/lib*
-//          /usr/local/lib*
-//          /usr/share/gdb*
-//
-bool ProfilerDataDBWriter::AuxIsLinuxSystemModule(const gtString& absolutePath)
-{
-    bool ret = false;
-
-    int len = absolutePath.length();
-
-    if (len > 3 && 0 == memcmp(absolutePath.asCharArray() + len - 3, L".so", 3 * sizeof(wchar_t)))
-    {
-        // Kernel samples
-        ret = (absolutePath.find(L"[kernel.kallsyms]") != -1);
-
-        if (!ret && L'/' == absolutePath[0])
-        {
-            // is it "/lib"
-            ret = (absolutePath.compare(1, 3, L"lib") == 0);
-
-            if (!ret)
-            {
-                bool isUsrPath = (absolutePath.compare(1, 4, L"usr/") == 0);
-
-                // is it /usr/lib, /usr/local/lib, /usr/share/gdb
-                if (isUsrPath)
-                {
-                    bool isLib = (absolutePath.compare(5, 3, L"lib") == 0) || (absolutePath.compare(5, 9, L"local/lib") == 0);
-
-                    ret = isLib || (absolutePath.compare(5, 10, L"share/gdb") == 0);
-                }
-            }
-        }
-    }
-
-    return ret;
-}
-
-bool ProfilerDataDBWriter::IsSystemModule(const gtString& absolutePath)
-{
-    bool ret;
-
-    if (absolutePath.length() > 4 && (absolutePath.endsWith(L".dll") ||
-                                      absolutePath.endsWith(L".sys") ||
-                                      absolutePath.endsWith(L".exe")))
-    {
-        ret = IsWindowsSystemModuleNoExt(absolutePath);
-    }
-    else
-    {
-        ret = AuxIsLinuxSystemModule(absolutePath);
-    }
-
-    return ret;
-}
-
-
 gtString ProfilerDataDBWriter::ConvertQtToGTString(const QString& inputStr)
 {
     gtString str;
@@ -297,7 +210,7 @@ void ProfilerDataDBWriter::PackProcessInfo(const PidProcessMap& processMap, CPAP
 {
     for (auto& pit : processMap)
     {
-        processList.emplace_back(pit.first, pit.second.getPath(), pit.second.m_is32Bit);
+        processList.emplace_back(pit.first, pit.second.getPath(), pit.second.m_is32Bit, pit.second.m_hasCss);
     }
 }
 
@@ -309,7 +222,7 @@ void ProfilerDataDBWriter::PackModuleInfo(const NameModuleMap& modMap, CPAModule
                                 m.first,
                                 m.second.m_size,
                                 m.second.m_modType,
-                                IsSystemModule(m.first),
+                                osIsSystemModule(m.first),
                                 m.second.m_is32Bit,
                                 m.second.m_isDebugInfoAvailable);
     }
@@ -383,7 +296,7 @@ void ProfilerDataDBWriter::PackSampleInfo(const NameModuleMap& modMap, CPASampeI
 
         for (auto fit = module.second.getBeginFunction(); fit != module.second.getEndFunction(); ++fit)
         {
-            gtUInt32 functionId = fit->second.m_functionId;
+            gtUInt32 functionId = generateFuncId(module.second.m_moduleId, fit->second.m_functionId);
 
             for (auto aptIt = fit->second.getBeginSample(); aptIt != fit->second.getEndSample(); ++aptIt)
             {
@@ -435,7 +348,7 @@ void ProfilerDataDBWriter::PackFunctionInfo(const NameModuleMap& modMap, CPAFunc
             gtString funcName = fit->second.getFuncName();
             gtUInt64 startOffset = fit->second.getBaseAddr() - modLoadAddr;
             gtUInt64 size = fit->second.getSize();
-            gtUInt32 funcId = fit->second.m_functionId;
+            gtUInt32 funcId = generateFuncId(modId, fit->second.m_functionId);
 
             // If function name is empty, it will be considered as unknown-function, don't insert into DB.
             // else insert function info into DB
@@ -467,7 +380,6 @@ void ProfilerDataDBWriter::PackFunctionInfo(const NameModuleMap& modMap, CPAFunc
 }
 
 bool ProfilerDataDBWriter::Write(
-    const gtString& path,
     CpuProfileInfo& profileInfo,
     gtUInt64 cpuAffinity,
     const PidProcessMap& procMap,
@@ -476,22 +388,8 @@ bool ProfilerDataDBWriter::Write(
     const gtHashMap<gtUInt32, std::tuple<gtString, gtUInt64, gtUInt64>>& modInstanceInfoMap,
     const CoreTopologyMap* pTopMap)
 {
-    if (m_pCpuProfDbAdapter != nullptr)
+    if (m_isWriterReady)
     {
-        // Remove trailing '.ebp' from path
-        gtString dbPath = path;
-
-        if (dbPath.endsWith(gtString(L".ebp")))
-        {
-            int pos = dbPath.reverseFind(L".");
-            dbPath.extruct(pos, dbPath.length());
-        }
-
-        gtString dbExtn;
-        m_pCpuProfDbAdapter->GetDbFileExtension(dbExtn);
-        dbPath.append(dbExtn);
-        m_pCpuProfDbAdapter->CreateDb(dbPath, AMDT_PROFILE_MODE_AGGREGATION);
-
         AMDTProfileSessionInfo sessionInfo;
         PackSessionInfo(profileInfo, cpuAffinity, sessionInfo);
         m_pCpuProfDbAdapter->InsertSessionInfo(sessionInfo);
@@ -547,10 +445,27 @@ bool ProfilerDataDBWriter::Write(
         PackSampleInfo(modMap, sampleList);
         m_pCpuProfDbAdapter->InsertSamples(sampleList);
         sampleList.clear();
-
-        m_pCpuProfDbAdapter->CloseDb();
     }
 
     return true;
 }
-#endif // AMDT_ENABLE_CPUPROF_DB
+
+bool ProfilerDataDBWriter::Write(const CPACallStackFrameInfoList& csFrameInfoList)
+{
+    if (m_isWriterReady)
+    {
+        m_pCpuProfDbAdapter->InsertCallStackFrames(csFrameInfoList);
+    }
+
+    return true;
+}
+
+bool ProfilerDataDBWriter::Write(const CPACallStackLeafInfoList& csLeafInfoList)
+{
+    if (m_isWriterReady)
+    {
+        return m_pCpuProfDbAdapter->InsertCallStackLeafs(csLeafInfoList);
+    }
+
+    return true;
+}
